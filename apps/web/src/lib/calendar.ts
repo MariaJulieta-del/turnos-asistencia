@@ -1,6 +1,6 @@
-import type { BusinessRules, Employee, ScheduledShift } from "@turnos/contract";
-import { MS_MIN, localDateKey, type Anomaly, type AttendanceResult, type Interval, type Punch } from "@turnos/core";
-import { buildTimesheet } from "./timesheet";
+import type { BusinessRules, Employee, PunchRecord, ScheduledShift } from "@turnos/contract";
+import { MS_MIN, localDateKey, type Anomaly, type AttendanceResult, type Interval } from "@turnos/core";
+import { buildTimesheet, type LocationFlag } from "./timesheet";
 
 /** Lo de un empleado en un día del calendario: lo planificado contra lo marcado. */
 export interface DayEntry {
@@ -15,6 +15,8 @@ export interface DayEntry {
   plannedMin: number;
   attendance: AttendanceResult[];
   anomalies: Anomaly[];
+  /** Marcas de ese día fuera del local, sin ubicación o con GPS impreciso. */
+  locationFlags: LocationFlag[];
 }
 
 /**
@@ -25,7 +27,7 @@ export interface DayEntry {
 export function buildCalendar(
   employees: readonly Employee[],
   shifts: readonly ScheduledShift[],
-  punches: readonly Punch[],
+  punches: readonly PunchRecord[],
   business: BusinessRules,
   now = Number.POSITIVE_INFINITY,
 ): Map<string, DayEntry[]> {
@@ -48,6 +50,7 @@ export function buildCalendar(
           plannedMin: 0,
           attendance: [],
           anomalies: [],
+          locationFlags: [],
         };
         byDay.set(day, e);
       }
@@ -72,6 +75,7 @@ export function buildCalendar(
       if (day) entry(day).attendance.push(a);
     }
     for (const a of sheet.anomalies) entry(localDateKey(a.at, tz)).anomalies.push(a);
+    for (const f of sheet.locationFlags) entry(localDateKey(f.at, tz)).locationFlags.push(f);
 
     for (const [day, e] of byDay) {
       e.shifts.sort((a, b) => a.start - b.start);

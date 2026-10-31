@@ -32,6 +32,13 @@ enum PunchSource {
   MANUAL // cargada/corregida por el dueño
 }
 
+enum GeoStatus {
+  INSIDE // estaba en el local
+  OUTSIDE // afuera aun descontando el error del GPS
+  UNCERTAIN // no se puede asegurar (GPS impreciso)
+  NONE // no compartió la ubicación
+}
+
 enum SwapStatus {
   PENDING_PEER // esperando que el compañero acepte
   PENDING_OWNER // esperando aprobación del dueño
@@ -137,9 +144,11 @@ model Punch {
   receivedAt    DateTime    @default(now()) // instante en que llegó al servidor (para detectar relojes cambiados)
   source        PunchSource @default(APP)
   // Ubicación solo en el instante de fichar, y solo si hay consentimiento. Nunca seguimiento continuo.
-  lat           Float?
-  lng           Float?
-  insideGeofence Boolean?
+  // No se guardan las coordenadas del empleado (minimización, Ley 25.326): solo el resultado de la geovalla.
+  // null = el comercio no tenía local configurado al fichar.
+  geoStatus     GeoStatus?
+  distanceM     Int? // distancia al local más cercano
+  accuracyM     Int? // error informado por el GPS
   editedById    String? // si el dueño la corrigió
   note          String?
 

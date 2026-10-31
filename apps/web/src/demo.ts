@@ -1,12 +1,16 @@
 import type {
   Employee,
   MonthSchedule,
-  NewShiftInput,
+  NewShiftsInput,
   PublishInput,
   PublishResult,
+  PunchGeo,
+  PunchRecord,
   ScheduledShift,
   ShiftTemplate,
   Snapshot,
+  Workplace,
+  WorkplaceInput,
 } from "@turnos/contract";
 import { MS_MIN, addDays, localDateKey, monthGridDates, shiftInstants, type Punch } from "@turnos/core";
 
@@ -21,12 +25,14 @@ const at = (date: string, hhmm: string): number => {
 };
 
 let seq = 0;
-const p = (employeeId: string, type: Punch["type"], date: string, hhmm: string): Punch => ({
-  id: `demo-${++seq}`,
-  employeeId,
-  type,
-  at: at(date, hhmm),
-});
+const INSIDE: PunchGeo = { status: "INSIDE", distanceM: 20, accuracyM: 12 };
+const p = (
+  employeeId: string,
+  type: Punch["type"],
+  date: string,
+  hhmm: string,
+  geo: PunchGeo = INSIDE,
+): PunchRecord => ({ id: `demo-${++seq}`, employeeId, type, at: at(date, hhmm), geo });
 const shift = (
   employeeId: string,
   date: string,
@@ -58,6 +64,9 @@ const business: Snapshot["business"] = {
   holidays: [],
 };
 
+// Plaza San Martín, Córdoba. El dueño lo cambia desde la pestaña Local.
+const workplaces: Workplace[] = [{ id: "w1", name: "Local centro", lat: -31.4167, lng: -64.1837, radiusM: 100 }];
+
 const shifts: ScheduledShift[] = [
   ...["2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29"].map((d) => shift("e1", d, "09:00", "17:00")),
   ...["2026-10-26", "2026-10-27", "2026-10-28"].map((d) => shift("e2", d, "14:00", "22:00")),
@@ -68,17 +77,19 @@ const shifts: ScheduledShift[] = [
   shift("e1", "2026-10-31", "09:00", "17:00", "DRAFT"),
 ];
 
-const punches: Punch[] = [
+const punches: PunchRecord[] = [
   p("e1", "IN", "2026-10-26", "09:02"),
   p("e1", "OUT", "2026-10-26", "17:05"),
-  p("e1", "IN", "2026-10-27", "09:20"),
+  // Marcó lejos del local: queda para revisar.
+  p("e1", "IN", "2026-10-27", "09:20", { status: "OUTSIDE", distanceM: 850, accuracyM: 25 }),
   p("e1", "OUT", "2026-10-27", "17:00"),
   p("e1", "IN", "2026-10-28", "09:00"),
   p("e1", "OUT", "2026-10-28", "19:00"),
   p("e1", "IN", "2026-10-29", "09:00"),
   p("e2", "IN", "2026-10-26", "14:00"),
   p("e2", "OUT", "2026-10-26", "22:30"),
-  p("e2", "OUT", "2026-10-28", "22:00"),
+  // No compartió la ubicación.
+  p("e2", "OUT", "2026-10-28", "22:00", { status: "NONE" }),
   p("e2", "IN", "2026-10-29", "10:00"),
   p("e2", "OUT", "2026-10-29", "14:05"),
   p("e2", "IN", "2026-10-29", "18:00"),
@@ -93,6 +104,7 @@ export function demoSnapshot(): Snapshot {
     employees,
     punches,
     planned: shifts.filter((s) => s.status === "PUBLISHED").map(({ id, employeeId, start, end }) => ({ id, employeeId, start, end })),
+    workplaces,
   };
 }
 
@@ -115,15 +127,29 @@ export function demoSchedule(month?: string): MonthSchedule {
   };
 }
 
-export function demoCreateShift(input: NewShiftInput): ScheduledShift {
-  const created: ScheduledShift = {
-    id: `demo-shift-${++seq}`,
-    employeeId: input.employeeId,
-    ...shiftInstants(input.date, input.startMin, input.endMin, OFFSET),
-    status: "DRAFT",
-  };
-  shifts.push(created);
+export function demoCreateShifts(input: NewShiftsInput): ScheduledShift[] {
+  const created = [...input.dates].sort().flatMap((date) =>
+    input.segments.map(
+      (s): ScheduledShift => ({
+        id: `demo-shift-${++seq}`,
+        employeeId: input.employeeId,
+        ...shiftInstants(date, s.startMin, s.endMin, OFFSET),
+        status: "DRAFT",
+      }),
+    ),
+  );
+  shifts.push(...created);
   return created;
+}
+
+export function demoWorkplace(): Workplace | null {
+  return workplaces[0] ?? null;
+}
+
+export function demoSaveWorkplace(input: WorkplaceInput): Workplace {
+  const saved = { id: workplaces[0]?.id ?? "w1", ...input };
+  workplaces.splice(0, workplaces.length, saved);
+  return saved;
 }
 
 export function demoRemoveShift(id: string): "deleted" | "cancelled" {

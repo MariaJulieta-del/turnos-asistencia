@@ -80,7 +80,8 @@ describe("POST /punches", () => {
     const { post, store } = setup();
     const first = await post(punch);
     expect(first.statusCode).toBe(201);
-    expect(first.json()).toEqual({ status: "created", receivedAt: NOW });
+    // El comercio de ejemplo tiene local configurado y esta marca vino sin ubicación.
+    expect(first.json()).toEqual({ status: "created", receivedAt: NOW, geo: { status: "NONE" } });
     const retry = await post(punch);
     expect(retry.statusCode).toBe(200);
     expect(retry.json().status).toBe("duplicate");
@@ -133,18 +134,25 @@ describe("horarios", () => {
     expect(m.punches).toHaveLength(10);
   });
 
+  const one = (date: string, startMin: number, endMin: number, employeeId = "e1") => ({
+    employeeId,
+    dates: [date],
+    segments: [{ startMin, endMin }],
+  });
+
   it("solo el dueño ve y edita horarios", async () => {
     const { get, app } = setup();
     expect((await get("/owner/schedule", "ana")).statusCode).toBe(403);
-    const res = await send(app, "POST", "/owner/shifts", { employeeId: "e1", date: "2026-11-02", startMin: 540, endMin: 1020 }, "ana");
+    const res = await send(app, "POST", "/owner/shifts", one("2026-11-02", 540, 1020), "ana");
     expect(res.statusCode).toBe(403);
   });
 
   it("asigna un turno en borrador; el empleado lo ve recién al publicar", async () => {
     const { get, app } = setup();
-    const res = await send(app, "POST", "/owner/shifts", { employeeId: "e2", date: "2026-11-02", startMin: 17 * 60, endMin: 60 });
+    const res = await send(app, "POST", "/owner/shifts", one("2026-11-02", 17 * 60, 60, "e2"));
     expect(res.statusCode).toBe(201);
-    const shift = res.json<ScheduledShift>();
+    const [shift] = res.json<ScheduledShift[]>();
+    if (!shift) throw new Error("sin turno");
     expect(shift.status).toBe("DRAFT");
     expect(new Date(shift.start).toISOString()).toBe("2026-11-02T20:00:00.000Z");
     expect(new Date(shift.end).toISOString()).toBe("2026-11-03T04:00:00.000Z");
@@ -163,12 +171,43 @@ describe("horarios", () => {
     expect(after.planned.map((s) => s.id)).toEqual([shift.id]);
   });
 
+  it("el mismo horario cortado en varios días de una vez", async () => {
+    const { app } = setup();
+    const res = await send(app, "POST", "/owner/shifts", {
+      employeeId: "e1",
+      dates: ["2026-11-04", "2026-11-02", "2026-11-03"],
+      segments: [
+        { startMin: 9 * 60, endMin: 13 * 60 },
+        { startMin: 17 * 60, endMin: 21 * 60 },
+      ],
+    });
+    expect(res.statusCode).toBe(201);
+    const shifts = res.json<ScheduledShift[]>();
+    expect(shifts).toHaveLength(6);
+    // Ordenados por día y tramo, todos en borrador.
+    expect(shifts.map((s) => new Date(s.start).toISOString().slice(5, 16))).toEqual([
+      "11-02T12:00",
+      "11-02T20:00",
+      "11-03T12:00",
+      "11-03T20:00",
+      "11-04T12:00",
+      "11-04T20:00",
+    ]);
+    expect(new Set(shifts.map((s) => s.status))).toEqual(new Set(["DRAFT"]));
+  });
+
   it("no asigna a alguien de otro comercio ni horarios inválidos", async () => {
     const { app } = setup();
-    const base = { employeeId: "e1", date: "2026-11-02", startMin: 540, endMin: 1020 };
-    expect((await send(app, "POST", "/owner/shifts", { ...base, employeeId: "x9" })).statusCode).toBe(400);
-    expect((await send(app, "POST", "/owner/shifts", { ...base, endMin: 1440 })).statusCode).toBe(400);
-    expect((await send(app, "POST", "/owner/shifts", { ...base, date: "2/11" })).statusCode).toBe(400);
+    const base = one("2026-11-02", 540, 1020);
+    const post = (body: object) => send(app, "POST", "/owner/shifts", body);
+    expect((await post({ ...base, employeeId: "x9" })).statusCode).toBe(400);
+    expect((await post(one("2026-11-02", 540, 1440))).statusCode).toBe(400);
+    expect((await post({ ...base, dates: ["2/11"] })).statusCode).toBe(400);
+    expect((await post({ ...base, dates: [] })).statusCode).toBe(400);
+    expect((await post({ ...base, dates: ["2026-11-02", "2026-11-02"] })).statusCode).toBe(400);
+    // Segundo tramo antes de que termine el primero.
+    const overlap = { ...base, segments: [{ startMin: 540, endMin: 800 }, { startMin: 700, endMin: 900 }] };
+    expect((await post(overlap)).statusCode).toBe(400);
   });
 
   it("quitar un borrador lo borra; quitar uno publicado lo cancela", async () => {
@@ -177,5 +216,64 @@ describe("horarios", () => {
     expect((await send(app, "DELETE", "/owner/shifts/shift-e1-2026-10-26")).json()).toEqual({ status: "cancelled" });
     expect(store.data.shifts.find((s) => s.id === "shift-e1-2026-10-26")?.status).toBe("CANCELLED");
     expect((await send(app, "DELETE", "/owner/shifts/shift-e1-2026-10-26")).statusCode).toBe(404);
+  });
+});
+
+describe("ubicación al fichar", () => {
+  // Local de ejemplo del seed: Plaza San Martín, Córdoba, radio 100 m.
+  const LOCAL = { lat: -31.4167, lng: -64.1837 };
+  const north = (metros: number, accuracyM = 15) => ({ lat: LOCAL.lat + metros / 111_195, lng: LOCAL.lng, accuracyM });
+  const punch = (id: string, location?: object) => ({ id, employeeId: "e1", type: "IN", at: NOW - 60_000, location });
+
+  it("dentro del local queda verificada y no se guardan coordenadas", async () => {
+    const { post, store } = setup();
+    const res = await post(punch("g1", north(30)));
+    expect(res.statusCode).toBe(201);
+    expect(res.json().geo).toEqual({ status: "INSIDE", distanceM: 30, accuracyM: 15 });
+    const saved = store.data.punches.find((p) => p.id === "g1")!;
+    expect(saved).not.toHaveProperty("location");
+    expect(JSON.stringify(saved)).not.toContain(String(LOCAL.lat).slice(0, 6));
+  });
+
+  it("fuera del local se guarda igual y queda marcada para revisar", async () => {
+    const { post, get } = setup();
+    const res = await post(punch("g2", north(900, 20)));
+    expect(res.statusCode).toBe(201);
+    expect(res.json().geo.status).toBe("OUTSIDE");
+    const owner = (await get("/owner/snapshot", "dueno")).json<Snapshot>();
+    expect(owner.punches.find((p) => p.id === "g2")?.geo).toEqual({ status: "OUTSIDE", distanceM: 900, accuracyM: 20 });
+  });
+
+  it("sin ubicación: NONE; sin local configurado: no se verifica", async () => {
+    const { post, store } = setup();
+    expect((await post(punch("g3"))).json().geo).toEqual({ status: "NONE" });
+    store.data.workplaces = [];
+    const res = await post(punch("g4", north(30)));
+    expect(res.json()).not.toHaveProperty("geo");
+    expect(store.data.punches.find((p) => p.id === "g4")).not.toHaveProperty("geo");
+  });
+
+  it("rechaza coordenadas imposibles", async () => {
+    const { post } = setup();
+    expect((await post(punch("g5", { lat: 120, lng: 0, accuracyM: 5 }))).statusCode).toBe(400);
+  });
+
+  it("el empleado recibe el local en su snapshot para avisarle antes de fichar", async () => {
+    const { get } = setup();
+    const s = (await get("/me/snapshot", "ana")).json<Snapshot>();
+    expect(s.workplaces).toEqual([{ id: "w1", name: "Local centro", lat: LOCAL.lat, lng: LOCAL.lng, radiusM: 100 }]);
+  });
+
+  it("solo el dueño configura el local", async () => {
+    const { app } = setup();
+    const put = (body: object, token = "dueno") =>
+      app.inject({ method: "PUT", url: "/owner/workplace", payload: body, headers: { authorization: `Bearer ${token}` } });
+    const body = { name: "Sucursal", lat: -31.42, lng: -64.19, radiusM: 150 };
+    expect((await put(body, "ana")).statusCode).toBe(403);
+    expect((await put({ ...body, radiusM: 5 })).statusCode).toBe(400);
+    const res = await put(body);
+    expect(res.json().workplace).toMatchObject(body);
+    const got = await app.inject({ method: "GET", url: "/owner/workplace", headers: { authorization: "Bearer dueno" } });
+    expect(got.json().workplace).toMatchObject(body);
   });
 });

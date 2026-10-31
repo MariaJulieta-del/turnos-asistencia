@@ -1,8 +1,16 @@
 import type { ReactNode } from "react";
-import { AlertTriangle, TrendingUp } from "lucide-react";
+import { AlertTriangle, MapPin, TrendingUp } from "lucide-react";
 import type { Employee, ScheduledShift } from "@turnos/contract";
 import type { DayEntry } from "../lib/calendar";
-import { ANOMALY_HINT, ANOMALY_LABEL, formatLongDate, formatMinutes, formatSpan, initials } from "../lib/format";
+import {
+  ANOMALY_HINT,
+  ANOMALY_LABEL,
+  describeLocationFlag,
+  formatLongDate,
+  formatMinutes,
+  formatSpan,
+  initials,
+} from "../lib/format";
 import { AttendanceBadge } from "./TimesheetView";
 
 interface Props {
@@ -35,7 +43,9 @@ export function DayDetail({
   actions,
   emptyText,
 }: Props) {
-  const visible = entries.filter((e) => e.shifts.length || e.intervals.length || e.anomalies.length);
+  const visible = entries.filter(
+    (e) => e.shifts.length || e.intervals.length || e.anomalies.length || e.locationFlags.length,
+  );
 
   return (
     <section className="card day-detail" aria-labelledby="day-detail-title" aria-live="polite">
@@ -129,6 +139,13 @@ export function DayDetail({
                     )}
                   </div>
                 )}
+
+                {e.locationFlags.map((f) => (
+                  <p key={f.punchId} className="entry-warn small">
+                    <MapPin size={16} aria-hidden="true" />
+                    <span>{describeLocationFlag(f, tz)}</span>
+                  </p>
+                ))}
 
                 {e.anomalies.map((a) => (
                   <p key={`${a.kind}-${a.at}`} className="entry-warn small">

@@ -12,9 +12,17 @@ import {
   type Punch,
   type RestViolation,
 } from "@turnos/core";
-import type { BusinessRules } from "@turnos/contract";
+import type { BusinessRules, PunchGeo, PunchRecord } from "@turnos/contract";
 
 export type { BusinessRules };
+
+/** Marca cuya ubicación no se pudo verificar dentro del local. Es un aviso: la marca cuenta igual. */
+export interface LocationFlag {
+  punchId: string;
+  type: Punch["type"];
+  at: number;
+  geo: PunchGeo;
+}
 
 export function toHoursRules(b: BusinessRules): HoursRules {
   return {
@@ -34,6 +42,8 @@ export interface Timesheet {
   hours: HoursReport;
   attendance: AttendanceResult[];
   restViolations: RestViolation[];
+  /** Marcas fuera del local, sin ubicación o con GPS impreciso (solo si el comercio tiene local). */
+  locationFlags: LocationFlag[];
 }
 
 /**
@@ -42,7 +52,7 @@ export interface Timesheet {
  */
 export function buildTimesheet(
   employeeId: string,
-  punches: readonly Punch[],
+  punches: readonly PunchRecord[],
   planned: readonly PlannedShift[],
   business: BusinessRules,
   now = Number.POSITIVE_INFINITY,
@@ -60,6 +70,10 @@ export function buildTimesheet(
       (a) => a.status !== "ABSENT" || (endOf.get(a.shiftId) ?? 0) <= now,
     ),
     restViolations: findRestViolations(intervals, business.minRestMin, business.tzOffsetMinutes),
+    locationFlags: own
+      .filter((p) => p.geo && p.geo.status !== "INSIDE")
+      .sort((a, b) => a.at - b.at)
+      .map((p) => ({ punchId: p.id, type: p.type, at: p.at, geo: p.geo! })),
   };
 }
 

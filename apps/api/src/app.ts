@@ -4,15 +4,18 @@ import type {
   BusinessRules,
   EmployeeSnapshot,
   MonthSchedule,
-  NewShiftInput,
+  NewShiftsInput,
   PublishInput,
   PublishResult,
   PunchAck,
+  PunchGeo,
   PunchInput,
   ScheduledShift,
   Snapshot,
+  Workplace,
+  WorkplaceInput,
 } from "@turnos/contract";
-import { addDays, monthGridDates, shiftInstants } from "@turnos/core";
+import { addDays, checkGeofence, monthGridDates, shiftInstants } from "@turnos/core";
 import { requireRole } from "./auth";
 import { currentMonth, monthRange, tzOffsetMinutes } from "./period";
 import type { AuthUser, BusinessRow, Range, Store } from "./store";
@@ -42,20 +45,54 @@ const punchBody = {
     employeeId: { type: "string", minLength: 1 },
     type: { enum: ["IN", "OUT"] },
     at: { type: "integer", minimum: 0 },
+    location: {
+      type: "object",
+      required: ["lat", "lng", "accuracyM"],
+      additionalProperties: false,
+      properties: {
+        lat: { type: "number", minimum: -90, maximum: 90 },
+        lng: { type: "number", minimum: -180, maximum: 180 },
+        accuracyM: { type: "number", minimum: 0, maximum: 100_000 },
+      },
+    },
   },
 } as const;
 
 const minuteOfDay = { type: "integer", minimum: 0, maximum: 1439 } as const;
 
-const shiftBody = {
+const shiftsBody = {
   type: "object",
-  required: ["employeeId", "date", "startMin", "endMin"],
+  required: ["employeeId", "dates", "segments"],
   additionalProperties: false,
   properties: {
     employeeId: { type: "string", minLength: 1 },
-    date: { type: "string", pattern: DATE },
-    startMin: minuteOfDay,
-    endMin: minuteOfDay,
+    // Hasta dos meses de una vez; sin repetir días.
+    dates: { type: "array", minItems: 1, maxItems: 62, uniqueItems: true, items: { type: "string", pattern: DATE } },
+    // Uno (de corrido) o dos tramos (cortado).
+    segments: {
+      type: "array",
+      minItems: 1,
+      maxItems: 2,
+      items: {
+        type: "object",
+        required: ["startMin", "endMin"],
+        additionalProperties: false,
+        properties: { startMin: minuteOfDay, endMin: minuteOfDay },
+      },
+    },
+  },
+} as const;
+
+const workplaceBody = {
+  type: "object",
+  required: ["name", "lat", "lng", "radiusM"],
+  additionalProperties: false,
+  properties: {
+    name: { type: "string", minLength: 1, maxLength: 80 },
+    lat: { type: "number", minimum: -90, maximum: 90 },
+    lng: { type: "number", minimum: -180, maximum: 180 },
+    // Menos de 30 m el GPS no alcanza a distinguir; más de 2 km deja de servir como control.
+    radiusM: { type: "integer", minimum: 30, maximum: 2000 },
   },
 } as const;
 
@@ -73,7 +110,7 @@ const publishBody = {
 export function buildApp({ store, webOrigin = "http://localhost:5173", now = Date.now, logger = false }: AppOptions) {
   // removeAdditional: false -> un campo desconocido es 400, no se descarta en silencio.
   const app: FastifyInstance = Fastify({ logger, ajv: { customOptions: { removeAdditional: false } } });
-  app.register(cors, { origin: webOrigin, methods: ["GET", "POST", "DELETE"] });
+  app.register(cors, { origin: webOrigin, methods: ["GET", "POST", "PUT", "DELETE"] });
   app.decorateRequest("user", null);
 
   const anyUser = requireRole(store, ["OWNER", "MANAGER", "EMPLOYEE"]);
@@ -112,14 +149,26 @@ export function buildApp({ store, webOrigin = "http://localhost:5173", now = Dat
     const range = monthRange(m, offset);
     const userId = onlyUser ? user.id : undefined;
 
-    const [holidays, employees, punches, planned] = await Promise.all([
+    const [holidays, employees, punches, planned, workplaces] = await Promise.all([
       store.listHolidays(business.id, m),
       onlyUser ? Promise.resolve([{ id: user.id, name: user.name }]) : store.listActiveUsers(business.id),
       store.listPunches(business.id, range, userId),
       store.listPublishedShifts(business.id, range, userId),
+      store.listWorkplaces(business.id),
     ]);
 
-    return { month: m, business: rules(business, offset, holidays), employees, punches, planned };
+    return { month: m, business: rules(business, offset, holidays), employees, punches, planned, workplaces };
+  }
+
+  /**
+   * Resultado de la geovalla para una marca. null si el comercio no tiene local configurado.
+   * Las coordenadas se usan acá y se descartan: no llegan al store.
+   */
+  function geoFor(location: PunchInput["location"], workplaces: Workplace[]): PunchGeo | null {
+    if (workplaces.length === 0) return null;
+    if (!location) return { status: "NONE" };
+    const check = checkGeofence(location, workplaces)!;
+    return { status: check.status, distanceM: check.distanceM, accuracyM: Math.round(location.accuracyM) };
   }
 
   app.get("/health", async () => ({ ok: true }));
@@ -147,10 +196,29 @@ export function buildApp({ store, webOrigin = "http://localhost:5173", now = Dat
       // Cada uno ficha por sí mismo. Las correcciones del dueño van por otra ruta (pendiente).
       if (req.body.employeeId !== user.id) return reply.code(403).send({ error: "Solo podés fichar por vos" });
       const receivedAt = now();
-      const result = await store.insertPunch(req.body, receivedAt);
+      // Nunca se rechaza una marca por la ubicación: queda guardada y marcada para que el dueño revise.
+      const { location, ...punch } = req.body;
+      const geo = geoFor(location, await store.listWorkplaces(user.businessId));
+      const result = await store.insertPunch(punch, receivedAt, geo);
       if (result === "conflict") return reply.code(409).send({ error: "Id de marca usado por otra persona" });
-      return reply.code(result === "created" ? 201 : 200).send({ status: result, receivedAt });
+      if (result === "duplicate") return reply.code(200).send({ status: result, receivedAt });
+      return reply.code(201).send({ status: result, receivedAt, ...(geo && { geo }) });
     },
+  );
+
+  // ---------- Lugar de trabajo ----------
+
+  app.get("/owner/workplace", { preHandler: managers }, async (req): Promise<{ workplace: Workplace | null }> => {
+    const [first] = await store.listWorkplaces(req.user!.businessId);
+    return { workplace: first ?? null };
+  });
+
+  app.put<{ Body: WorkplaceInput }>(
+    "/owner/workplace",
+    { schema: { body: workplaceBody }, preHandler: managers },
+    async (req): Promise<{ workplace: Workplace }> => ({
+      workplace: await store.saveWorkplace(req.user!.businessId, req.body),
+    }),
   );
 
   // ---------- Horarios ----------
@@ -184,18 +252,25 @@ export function buildApp({ store, webOrigin = "http://localhost:5173", now = Dat
     },
   );
 
-  app.post<{ Body: NewShiftInput }>(
+  /** El mismo horario (de corrido o cortado) en uno o varios días, como borrador. */
+  app.post<{ Body: NewShiftsInput }>(
     "/owner/shifts",
-    { schema: { body: shiftBody }, preHandler: managers },
-    async (req, reply): Promise<ScheduledShift | { error: string }> => {
+    { schema: { body: shiftsBody }, preHandler: managers },
+    async (req, reply): Promise<ScheduledShift[] | { error: string }> => {
       const { business, offset } = await businessOf(req.user!);
-      const { employeeId, date, startMin, endMin } = req.body;
+      const { employeeId, dates, segments } = req.body;
       const employees = await store.listActiveUsers(business.id);
       if (!employees.some((e) => e.id === employeeId)) {
         return reply.code(400).send({ error: "Ese empleado no es de este comercio" });
       }
-      const shift = await store.createShift({ employeeId, ...shiftInstants(date, startMin, endMin, offset) });
-      return reply.code(201).send(shift);
+      const [first, second] = segments;
+      if (second && (first!.endMin <= first!.startMin || second.startMin < first!.endMin)) {
+        return reply.code(400).send({ error: "En un horario cortado, el segundo tramo empieza después del primero" });
+      }
+      const shifts = [...dates]
+        .sort()
+        .flatMap((date) => segments.map((s) => ({ employeeId, ...shiftInstants(date, s.startMin, s.endMin, offset) })));
+      return reply.code(201).send(await store.createShifts(shifts));
     },
   );
 

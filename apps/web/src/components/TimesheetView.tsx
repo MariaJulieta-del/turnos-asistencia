@@ -1,12 +1,13 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, CalendarClock, CheckCircle2, Moon, Sun, TrendingUp } from "lucide-react";
+import { AlertTriangle, CalendarClock, CheckCircle2, MapPin, Moon, Sun, TrendingUp } from "lucide-react";
 import { localDateKey, type AttendanceResult, type Interval, type PlannedShift } from "@turnos/core";
 import {
   ANOMALY_HINT,
   ANOMALY_LABEL,
   ATTENDANCE_LABEL,
   dateChip,
+  describeLocationFlag,
   formatDateKey,
   formatMinutes,
   formatSpan,
@@ -38,7 +39,7 @@ const ATTENDANCE_TONE = { ON_TIME: "ok", LATE: "warn", ABSENT: "danger" } as con
  * así los dos ven exactamente los mismos números.
  */
 export function TimesheetView({ sheet, planned, tzOffsetMinutes: tz, audience, periodLabel }: Props) {
-  const { hours, intervals, anomalies, attendance, restViolations } = sheet;
+  const { hours, intervals, anomalies, attendance, restViolations, locationFlags } = sheet;
   const shiftById = new Map(planned.map((s) => [s.id, s]));
 
   // Un día aparece si tiene horas o si tenía un turno planificado (para que se vean las ausencias).
@@ -80,13 +81,21 @@ export function TimesheetView({ sheet, planned, tzOffsetMinutes: tz, audience, p
         </p>
       </section>
 
-      {anomalies.length > 0 && (
+      {anomalies.length + locationFlags.length > 0 && (
         <section className="callout warn" aria-labelledby="review-title">
           <div className="callout-head">
             <AlertTriangle size={20} aria-hidden="true" />
-            <h3 id="review-title">Para revisar ({anomalies.length})</h3>
+            <h3 id="review-title">Para revisar ({anomalies.length + locationFlags.length})</h3>
           </div>
           <ul>
+            {locationFlags.map((f) => (
+              <li key={f.punchId} className="flag-item">
+                <MapPin size={16} aria-hidden="true" />
+                <span>
+                  <strong>{formatDateKey(localDateKey(f.at, tz))}</strong> · {describeLocationFlag(f, tz)}
+                </span>
+              </li>
+            ))}
             {anomalies.map((a) => (
               <li key={`${a.kind}-${a.punchId ?? a.at}`}>
                 <strong>{ANOMALY_LABEL[a.kind]}</strong>

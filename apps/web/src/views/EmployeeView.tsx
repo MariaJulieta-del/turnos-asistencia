@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { CheckCircle2, CloudOff, LogIn, LogOut } from "lucide-react";
-import { localDateKey, monthGridDates, type Punch } from "@turnos/core";
+import { CheckCircle2, CloudOff, LogIn, LogOut, MapPin } from "lucide-react";
+import type { PunchInput } from "@turnos/contract";
+import { checkGeofence, localDateKey, monthGridDates, type Punch } from "@turnos/core";
 import { AppShell } from "../components/AppShell";
 import { DayDetail } from "../components/DayDetail";
 import { FirstVisitTip } from "../components/FirstVisitTip";
+import { Modal } from "../components/Modal";
 import { MonthCalendar } from "../components/MonthCalendar";
 import { TimesheetView } from "../components/TimesheetView";
 import { buildCalendar, colorIndex } from "../lib/calendar";
 import { DEMO_MODE, fetchEmployeeSnapshot, sendPunch, type EmployeeSnapshot } from "../lib/api";
-import { formatDateKey, formatLongDate, formatMonth, formatSpan, formatTime } from "../lib/format";
+import { formatDateKey, formatDistance, formatLongDate, formatMonth, formatSpan, formatTime } from "../lib/format";
+import { POSITION_ERROR_TEXT, currentPosition, getConsent, setConsent, type GeoConsent } from "../lib/geo";
 import { punchQueue } from "../lib/localQueue";
 import { newPunch } from "../lib/punchQueue";
 import { buildTimesheet, lastPunch, nextPunchType } from "../lib/timesheet";
@@ -21,10 +24,14 @@ export function EmployeeView() {
   const { token = "" } = useParams();
   const [data, setData] = useState<EmployeeSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState<Punch[]>([]);
+  const [pending, setPending] = useState<PunchInput[]>([]);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
+  const [geoNote, setGeoNote] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
+  const [consent, setConsentState] = useState<GeoConsent>(() => getConsent());
+  /** Marca esperando que el empleado elija si comparte la ubicación (primera vez), o "settings" para cambiarlo. */
+  const [consentFor, setConsentFor] = useState<Punch | "settings" | null>(null);
   const hasData = useRef(false);
 
   /**
@@ -94,14 +101,59 @@ export function EmployeeView() {
   );
   const selectedDay = selected && gridDates.includes(selected) ? selected : today;
 
-  async function punch() {
-    setBusy(true);
+  const workplaces = data.workplaces;
+  const checksLocation = workplaces.length > 0;
+
+  /** La hora de la marca es la del toque, aunque la ubicación tarde unos segundos. */
+  function punch() {
     const p = newPunch(me.id, next);
-    await punchQueue.enqueue(p);
+    if (!checksLocation) return void save(p, false);
+    if (consent === null) return setConsentFor(p);
+    void save(p, consent === "granted");
+  }
+
+  /**
+   * Guarda la marca (con ubicación si corresponde). Nunca se descarta por la ubicación: si está lejos,
+   * sin GPS o sin permiso, se guarda igual y el dueño la ve para revisar.
+   */
+  async function save(p: Punch, withLocation: boolean) {
+    setBusy(true);
+    setGeoNote(null);
+    const label = `${p.type === "IN" ? "Entrada" : "Salida"} marcada a las ${formatTime(p.at, tz)}.`;
+    let input: PunchInput = p;
+    if (withLocation) {
+      setFeedback("Verificando tu ubicación…");
+      const pos = await currentPosition();
+      if ("error" in pos) {
+        setGeoNote({ tone: "warn", text: `${POSITION_ERROR_TEXT[pos.error]} La marca se guardó igual, sin ubicación; el dueño la va a ver para revisar.` });
+      } else {
+        input = { ...p, location: pos };
+        const check = checkGeofence(pos, workplaces)!;
+        const place = workplaces[0]!.name;
+        setGeoNote(
+          check.status === "INSIDE"
+            ? { tone: "ok", text: `Ubicación verificada: estás en ${place}.` }
+            : check.status === "OUTSIDE"
+              ? { tone: "warn", text: `Parece que no estás en ${place} (a ${formatDistance(check.distanceM)}). La marca se guardó igual y el dueño la va a revisar.` }
+              : { tone: "warn", text: `El GPS está impreciso y no se pudo confirmar que estés en ${place}. La marca se guardó igual.` },
+        );
+      }
+    } else if (checksLocation) {
+      setGeoNote({ tone: "warn", text: "Marcaste sin compartir la ubicación. El dueño la va a ver para revisar." });
+    }
+    await punchQueue.enqueue(input);
     setPending(await punchQueue.pending());
-    setFeedback(`${p.type === "IN" ? "Entrada" : "Salida"} marcada a las ${formatTime(p.at, tz)}.`);
+    setFeedback(label);
     setBusy(false);
     void sync();
+  }
+
+  function decide(value: Exclude<GeoConsent, null>) {
+    setConsent(value);
+    setConsentState(value);
+    const waiting = consentFor;
+    setConsentFor(null);
+    if (waiting && waiting !== "settings") void save(waiting, value === "granted");
   }
 
   const working = next === "OUT" && last;
@@ -154,6 +206,21 @@ export function EmployeeView() {
         <p className="small" role="status" aria-live="polite">
           {feedback}
         </p>
+        {geoNote && (
+          <p className={`sync ${geoNote.tone} small`}>
+            <MapPin size={16} aria-hidden="true" />
+            {geoNote.text}
+          </p>
+        )}
+        {checksLocation && (
+          <p className="muted small">
+            Al fichar se verifica que estés en <strong>{workplaces[0]!.name}</strong>
+            {consent === "declined" ? " (desactivado: marcás sin ubicación)" : ""}.{" "}
+            <button type="button" className="link-btn" onClick={() => setConsentFor("settings")}>
+              {consent === null ? "¿Qué es esto?" : "Cambiar"}
+            </button>
+          </p>
+        )}
         {myPending.length > 0 ? (
           <p className="sync warn small">
             <CloudOff size={16} aria-hidden="true" />
@@ -169,6 +236,33 @@ export function EmployeeView() {
           </p>
         )}
       </section>
+
+      {consentFor && (
+        <Modal title="Ubicación al fichar" onClose={() => setConsentFor(null)}>
+          <div className="stack">
+            <p>
+              El comercio verifica que fiches desde <strong>{workplaces[0]?.name}</strong>.
+            </p>
+            <ul className="tip-list small">
+              <li>Tu ubicación se lee <strong>solo en el momento de tocar el botón</strong>. No se sigue tu recorrido.</li>
+              <li>No se guardan tus coordenadas: solo si estabas en el local y a qué distancia.</li>
+              <li>
+                Si no la compartís, igual podés fichar: la marca cuenta, pero el dueño la ve marcada para revisar.
+              </li>
+            </ul>
+            <p className="muted small">Podés cambiar esta elección cuando quieras desde la pantalla de fichar.</p>
+            <div className="modal-actions">
+              <button type="button" className="btn ghost" onClick={() => decide("declined")}>
+                {consentFor === "settings" ? "No compartir" : "Fichar sin ubicación"}
+              </button>
+              <button type="button" className="btn primary" onClick={() => decide("granted")}>
+                <MapPin size={18} aria-hidden="true" />
+                {consentFor === "settings" ? "Compartir al fichar" : "Compartir y fichar"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       <section className="stack" aria-labelledby="cal-title">
         <div className="section-title">

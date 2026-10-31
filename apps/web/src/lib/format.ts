@@ -133,6 +133,26 @@ export const ANOMALY_HINT: Record<AnomalyKind, { employee: string; owner: string
   },
 };
 
+/** Texto del aviso de ubicación de una marca ("Entrada 09:20 fuera del local, a 850 m"). */
+export function describeLocationFlag(
+  flag: { type: "IN" | "OUT"; at: number; geo: { status: string; distanceM?: number; accuracyM?: number } },
+  tz: number,
+): string {
+  const what = `${flag.type === "IN" ? "Entrada" : "Salida"} de las ${formatTime(flag.at, tz)}`;
+  switch (flag.geo.status) {
+    case "OUTSIDE":
+      return `${what}: fuera del local, a ${formatDistance(flag.geo.distanceM ?? 0)}.`;
+    case "UNCERTAIN":
+      return `${what}: no se pudo confirmar que estuviera en el local (GPS impreciso${flag.geo.accuracyM ? `, ±${formatDistance(flag.geo.accuracyM)}` : ""}).`;
+    default:
+      return `${what}: sin ubicación.`;
+  }
+}
+
+export function formatDistance(m: number): string {
+  return m >= 1000 ? `${(m / 1000).toFixed(1).replace(".", ",")} km` : `${Math.round(m)} m`;
+}
+
 export const ATTENDANCE_LABEL: Record<AttendanceStatus, string> = {
   ON_TIME: "Puntual",
   LATE: "Tarde",

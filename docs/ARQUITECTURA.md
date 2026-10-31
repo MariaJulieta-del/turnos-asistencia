@@ -6,12 +6,12 @@
 2. **Offline primero para fichar.** El celular guarda la marca localmente con un `clientEventId` y la reenvía cuando hay señal. El servidor deduplica por ese id, así un reintento nunca duplica una marca.
 3. **Nunca inventar horas.** Una marca ambigua (doble entrada, salida sin entrada, entrada abierta) queda como anomalía y la resuelve el dueño; el sistema no adivina.
 4. **Instantes en UTC, zona en el comercio.** Argentina no tiene horario de verano (offset fijo −180), pero el modelo guarda `timezone` por comercio.
-5. **Ubicación mínima.** Solo se lee en el instante de fichar, con consentimiento, y se compara con una geovalla. Nunca hay seguimiento continuo.
+5. **Ubicación mínima.** Solo se lee en el instante de fichar, con consentimiento, y se compara con una geovalla en el servidor (`checkGeofence` en `core`). No se guardan coordenadas del empleado: solo el resultado (adentro, afuera, impreciso, sin ubicación), la distancia y el error del GPS. Nunca hay seguimiento continuo y nunca se rechaza una marca por la ubicación: lo dudoso queda para que el dueño revise.
 
 ## Capas
 
 ```
-apps/web (PWA)  ──►  API (pendiente)  ──►  packages/db (Prisma / PostgreSQL)
+apps/web (PWA)  ──►  apps/api (Fastify)  ──►  packages/db (Prisma / PostgreSQL)
       │                    │
       └────────────────────┴──►  packages/core (lógica pura)
 ```

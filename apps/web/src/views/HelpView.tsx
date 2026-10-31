@@ -55,6 +55,17 @@ export function HelpView() {
           </li>
           <li>
             <div>
+              <h3>Ubicación al fichar</h3>
+              <p className="muted">
+                Si el comercio cargó su local, la primera vez te pregunta si compartís la ubicación. Se lee{" "}
+                <strong>solo en el momento de tocar el botón</strong> y no se guardan tus coordenadas: solo si estabas
+                en el local. Si no la compartís o el GPS falla, la marca cuenta igual y el dueño la ve para revisar.
+                Podés cambiar tu elección con <strong>Cambiar</strong>, debajo del botón.
+              </p>
+            </div>
+          </li>
+          <li>
+            <div>
               <h3>¿Sin señal? No pasa nada</h3>
               <p className="muted">
                 La marca queda guardada en el celular con la hora en que tocaste y se envía sola cuando vuelve la
@@ -104,7 +115,9 @@ export function HelpView() {
             <div>
               <h3>Asigná horarios</h3>
               <p className="muted">
-                Tocá un día y después <strong>Asignar horario</strong>. Elegí el empleado y si es{" "}
+                Tocá un día y después <strong>Asignar horario</strong>. Elegí el empleado y{" "}
+                <strong>todos los días</strong> que lleven ese horario (tocándolos, o con los atajos «Lun a vie de esa
+                semana» o «Lun a vie de todo el mes»). Después, si es{" "}
                 <strong>de corrido</strong> (un tramo) o <strong>cortado</strong> (dos tramos, por ejemplo 9 a 13 y 17
                 a 21). Los horarios frecuentes (Mañana, Tarde, Cierre) se cargan con un toque. Si la salida es más
                 temprano que la entrada, termina al día siguiente.
@@ -151,6 +164,17 @@ export function HelpView() {
           </li>
           <li>
             <div>
+              <h3>Cargá el local en Local</h3>
+              <p className="muted">
+                Parado en el comercio, tocá <strong>Usar mi ubicación actual</strong>, elegí el radio (100 m alcanza
+                casi siempre) y guardá. Desde ahí, cada marca muestra si se hizo en el local. Las que se hicieron
+                lejos, sin ubicación o con GPS impreciso aparecen con el ícono de ubicación para revisar; nunca se
+                rechazan.
+              </p>
+            </div>
+          </li>
+          <li>
+            <div>
               <h3>Mirá el resumen en Horas</h3>
               <p className="muted">
                 Está el total del mes por empleado y cuántas cosas hay para revisar. Tocá un nombre para ver el detalle
@@ -185,6 +209,14 @@ export function HelpView() {
             <dd>
               Se compara la entrada con el turno asignado. Hay unos minutos de tolerancia antes de contar
               «Tarde». «Ausente» significa que no hay una entrada y salida completas para ese turno.
+            </dd>
+          </div>
+          <div>
+            <dt>Fuera del local · Sin ubicación</dt>
+            <dd>
+              «Fuera del local»: la marca se hizo lejos, aun descontando el error del GPS. «Sin ubicación»: no se
+              compartió o el celular no la pudo obtener. «GPS impreciso»: no se pudo confirmar. En todos los casos la
+              marca cuenta; es un aviso para revisar.
             </dd>
           </div>
           <div>

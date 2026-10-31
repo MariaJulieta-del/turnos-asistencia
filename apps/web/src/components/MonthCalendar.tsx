@@ -95,7 +95,7 @@ function SingleCell({ entry, tz }: { entry?: DayEntry; tz: number }) {
           {entry.extraMin > 0 && <span className="cal-extra">+{formatCompact(entry.extraMin)}</span>}
         </span>
       )}
-      {entry.anomalies.length > 0 && <span className="cal-flag">!</span>}
+      {entry.anomalies.length + entry.locationFlags.length > 0 && <span className="cal-flag">!</span>}
     </>
   );
 }
@@ -133,6 +133,7 @@ function TeamCell({
         </span>
       ))}
       {withShifts.length > MAX_PER_CELL && <span className="cal-more">+{withShifts.length - MAX_PER_CELL}</span>}
+      {entries.some((e) => e.anomalies.length + e.locationFlags.length > 0) && <span className="cal-flag">!</span>}
     </>
   );
 }

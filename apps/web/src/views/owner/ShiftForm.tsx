@@ -1,23 +1,27 @@
 import { useState, type FormEvent } from "react";
-import type { Employee, NewShiftInput, ShiftTemplate } from "@turnos/contract";
+import type { Employee, NewShiftsInput, ShiftTemplate } from "@turnos/contract";
 import { formatHM, formatLongDate, formatMinutes, parseHM } from "../../lib/format";
 
 interface Props {
   employees: Employee[];
-  /** Fechas que se pueden elegir (la grilla visible del calendario). */
+  /** "YYYY-MM" del calendario visible. */
+  month: string;
+  /** Grilla visible del calendario (semanas completas de lunes a domingo). */
   dates: string[];
   templates: ShiftTemplate[];
   initialEmployeeId?: string;
   initialDate?: string;
   onCancel: () => void;
-  /** Uno o dos tramos (horario cortado). Se guardan como borrador. */
-  onSave: (inputs: NewShiftInput[]) => Promise<void>;
+  /** El mismo horario (uno o dos tramos) en todos los días elegidos. Se guarda como borrador. */
+  onSave: (input: NewShiftsInput) => Promise<void>;
 }
 
 interface Segment {
   start: string;
   end: string;
 }
+
+const HEADERS = ["L", "M", "M", "J", "V", "S", "D"];
 
 function minutesOf(seg: Segment): { startMin: number; endMin: number; duration: number; crosses: boolean } | null {
   const startMin = parseHM(seg.start);
@@ -27,11 +31,14 @@ function minutesOf(seg: Segment): { startMin: number; endMin: number; duration: 
   return { startMin, endMin, crosses, duration: (crosses ? endMin + 1440 : endMin) - startMin };
 }
 
-/** Asignar un horario: de corrido (un tramo) o cortado (dos tramos el mismo día). */
-export function ShiftForm({ employees, dates, templates, initialEmployeeId, initialDate, onCancel, onSave }: Props) {
+/**
+ * Asignar un horario: de corrido (un tramo) o cortado (dos tramos), en uno o varios días a la vez.
+ * La grilla empieza en lunes, así la posición en la semana sale del índice.
+ */
+export function ShiftForm({ employees, month, dates, templates, initialEmployeeId, initialDate, onCancel, onSave }: Props) {
   const first = templates[0];
   const [employeeId, setEmployeeId] = useState(initialEmployeeId ?? employees[0]?.id ?? "");
-  const [date, setDate] = useState(initialDate ?? dates[0] ?? "");
+  const [days, setDays] = useState<Set<string>>(() => new Set(initialDate && dates.includes(initialDate) ? [initialDate] : []));
   const [split, setSplit] = useState(false);
   const [a, setA] = useState<Segment>({
     start: first ? formatHM(first.startMin) : "09:00",
@@ -43,7 +50,24 @@ export function ShiftForm({ employees, dates, templates, initialEmployeeId, init
 
   const ma = minutesOf(a);
   const mb = split ? minutesOf(b) : null;
-  const total = (ma?.duration ?? 0) + (mb?.duration ?? 0);
+  const perDay = (ma?.duration ?? 0) + (mb?.duration ?? 0);
+
+  // Semana de referencia para los atajos: la del primer día elegido, o la del día desde el que se abrió.
+  const anchor = [...days].sort()[0] ?? initialDate ?? dates.find((d) => d.startsWith(month)) ?? dates[0]!;
+  const anchorWeek = Math.floor(Math.max(0, dates.indexOf(anchor)) / 7);
+  const weekOf = (i: number) => Math.floor(i / 7);
+  const isWeekday = (i: number) => i % 7 < 5;
+
+  function toggle(date: string) {
+    setDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(date)) next.delete(date);
+      else next.add(date);
+      return next;
+    });
+  }
+
+  const pick = (filter: (d: string, i: number) => boolean) => setDays(new Set(dates.filter(filter)));
 
   function applyTemplate(t: ShiftTemplate) {
     setSplit(false);
@@ -52,6 +76,10 @@ export function ShiftForm({ employees, dates, templates, initialEmployeeId, init
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (days.size === 0) {
+      setError("Elegí al menos un día.");
+      return;
+    }
     if (!ma || (split && !mb)) {
       setError("Completá la hora de entrada y de salida de cada tramo.");
       return;
@@ -60,16 +88,12 @@ export function ShiftForm({ employees, dates, templates, initialEmployeeId, init
       setError("En un horario cortado, el segundo tramo tiene que empezar después de que termine el primero.");
       return;
     }
-    if (!dates.includes(date)) {
-      setError("Elegí un día del calendario que estás viendo.");
-      return;
-    }
     setSaving(true);
     setError(null);
-    const inputs: NewShiftInput[] = [{ employeeId, date, startMin: ma.startMin, endMin: ma.endMin }];
-    if (split && mb) inputs.push({ employeeId, date, startMin: mb.startMin, endMin: mb.endMin });
+    const segments = [{ startMin: ma.startMin, endMin: ma.endMin }];
+    if (split && mb) segments.push({ startMin: mb.startMin, endMin: mb.endMin });
     try {
-      await onSave(inputs);
+      await onSave({ employeeId, dates: [...days].sort(), segments });
     } catch (err) {
       setError((err as Error).message);
       setSaving(false);
@@ -89,22 +113,57 @@ export function ShiftForm({ employees, dates, templates, initialEmployeeId, init
         </select>
       </div>
 
-      <div className="field">
-        <label htmlFor="sf-date">Día</label>
-        <input
-          id="sf-date"
-          type="date"
-          value={date}
-          min={dates[0]}
-          max={dates.at(-1)}
-          onChange={(e) => setDate(e.target.value)}
-          aria-describedby="sf-date-hint"
-          required
-        />
-        <span id="sf-date-hint" className="muted small cap">
-          {date && formatLongDate(date)}
-        </span>
-      </div>
+      <fieldset className="field">
+        <legend>
+          Días <span className="muted small">· tocá todos los que lleven este horario</span>
+        </legend>
+        <div className="chips">
+          <button
+            type="button"
+            className="chip"
+            onClick={() => pick((d, i) => weekOf(i) === anchorWeek && isWeekday(i))}
+          >
+            Lun a vie de esa semana
+          </button>
+          <button type="button" className="chip" onClick={() => pick((d, i) => d.startsWith(month) && isWeekday(i))}>
+            Lun a vie de todo el mes
+          </button>
+          <button type="button" className="chip" onClick={() => pick((d, i) => weekOf(i) === anchorWeek)}>
+            Toda esa semana
+          </button>
+          {days.size > 0 && (
+            <button type="button" className="chip" onClick={() => setDays(new Set())}>
+              Limpiar
+            </button>
+          )}
+        </div>
+        <div className="day-picker" role="group" aria-label="Días del calendario">
+          {HEADERS.map((h, i) => (
+            <span key={i} className="dp-head" aria-hidden="true">
+              {h}
+            </span>
+          ))}
+          {dates.map((d) => (
+            <button
+              key={d}
+              type="button"
+              className={`dp-day ${d.startsWith(month) ? "" : "outside"}`}
+              aria-pressed={days.has(d)}
+              aria-label={formatLongDate(d)}
+              onClick={() => toggle(d)}
+            >
+              {Number(d.slice(8))}
+            </button>
+          ))}
+        </div>
+        <p className="muted small" aria-live="polite">
+          {days.size === 0
+            ? "Ningún día elegido."
+            : days.size === 1
+              ? `Elegiste el ${formatLongDate([...days][0]!)}.`
+              : `${days.size} días elegidos.`}
+        </p>
+      </fieldset>
 
       {templates.length > 0 && (
         <fieldset className="field">
@@ -151,8 +210,9 @@ export function ShiftForm({ employees, dates, templates, initialEmployeeId, init
       {split && <SegmentFields id="b" label="Segundo tramo" value={b} onChange={setB} />}
 
       <p className="muted small" aria-live="polite">
-        {total > 0 && `Total: ${formatMinutes(total)}.`}
+        {perDay > 0 && `${formatMinutes(perDay)} por día.`}
         {!split && ma?.crosses && " Termina al día siguiente."}
+        {days.size > 1 && perDay > 0 && ` En total, ${formatMinutes(perDay * days.size)}.`}
       </p>
 
       {error && (
@@ -166,7 +226,7 @@ export function ShiftForm({ employees, dates, templates, initialEmployeeId, init
           Cancelar
         </button>
         <button type="submit" className="btn primary" disabled={saving}>
-          {saving ? "Guardando…" : "Guardar borrador"}
+          {saving ? "Guardando…" : days.size > 1 ? `Guardar en ${days.size} días` : "Guardar borrador"}
         </button>
       </div>
     </form>

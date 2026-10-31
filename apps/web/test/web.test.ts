@@ -3,7 +3,7 @@ import type { Punch } from "@turnos/core";
 import { memoryStore, newPunch, PunchQueue } from "../src/lib/punchQueue";
 import { buildCalendar } from "../src/lib/calendar";
 import { buildTimesheet, checkSchedule, nextPunchType } from "../src/lib/timesheet";
-import { demoSnapshot } from "../src/demo";
+import { demoCreateShifts, demoSnapshot } from "../src/demo";
 
 const DEMO_SNAPSHOT = demoSnapshot();
 
@@ -109,6 +109,28 @@ describe("timesheet", () => {
     expect(ana28?.extraMin).toBe(120);
     // El 29 tiene turno pero la salida no se marcó: queda la anomalía en ese día.
     expect(cal.get("2026-10-29")?.find((e) => e.employeeId === "e1")?.anomalies.map((a) => a.kind)).toEqual(["OPEN_IN"]);
+  });
+
+  it("marcas fuera del local o sin ubicación quedan para revisar, pero suman horas", () => {
+    const s = buildTimesheet("e1", punches, planned, business);
+    expect(s.locationFlags.map((f) => f.geo.status)).toEqual(["OUTSIDE"]);
+    // La entrada del 27 fuera del local cuenta igual: 7 h 40 min ese día.
+    expect(s.hours.byDay["2026-10-27"]?.total).toBe(460);
+    expect(buildTimesheet("e2", punches, planned, business).locationFlags.map((f) => f.geo.status)).toEqual(["NONE"]);
+  });
+
+  it("asignar el mismo horario cortado en varios días crea un turno por tramo y día", () => {
+    const created = demoCreateShifts({
+      employeeId: "e2",
+      dates: ["2026-11-04", "2026-11-03"],
+      segments: [
+        { startMin: 540, endMin: 780 },
+        { startMin: 1020, endMin: 1260 },
+      ],
+    });
+    expect(created).toHaveLength(4);
+    expect(new Set(created.map((c) => c.status))).toEqual(new Set(["DRAFT"]));
+    expect(created[0]!.start).toBeLessThan(created[2]!.start); // ordenados por día
   });
 
   it("propone salida si la última marca es una entrada", () => {

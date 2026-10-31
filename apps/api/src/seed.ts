@@ -45,6 +45,8 @@ export function demoData(): MemoryData {
       { id: "e2", businessId: "b1", name: "Bruno Díaz", role: "EMPLOYEE", tokenHash: hashToken("bruno"), active: true },
     ],
     holidays: [],
+    // Plaza San Martín, Córdoba. Sirve de ejemplo; el dueño lo cambia desde la pestaña Local.
+    workplaces: [{ id: "w1", businessId: "b1", name: "Local centro", lat: -31.4167, lng: -64.1837, radiusM: 100 }],
     templates: [
       { id: "t1", businessId: "b1", name: "Mañana", startMin: 9 * 60, endMin: 17 * 60 },
       { id: "t2", businessId: "b1", name: "Tarde", startMin: 14 * 60, endMin: 22 * 60 },

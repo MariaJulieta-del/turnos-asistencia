@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Plus, Send } from "lucide-react";
-import type { MonthSchedule, NewShiftInput, ScheduledShift } from "@turnos/contract";
+import type { MonthSchedule, NewShiftsInput, ScheduledShift } from "@turnos/contract";
 import { addMonths, localDateKey } from "@turnos/core";
 import { DayDetail } from "../../components/DayDetail";
 import { Modal } from "../../components/Modal";
 import { MonthCalendar } from "../../components/MonthCalendar";
-import { createShift, fetchSchedule, publishSchedule, removeShift } from "../../lib/api";
+import { createShifts, fetchSchedule, publishSchedule, removeShift } from "../../lib/api";
 import { buildCalendar, colorIndex, type DayEntry } from "../../lib/calendar";
 import { formatDateKey, formatLongDate, formatMonth, formatSpan, initials } from "../../lib/format";
 import { checkSchedule } from "../../lib/timesheet";
@@ -102,12 +102,13 @@ export function OwnerSchedule({ token }: { token: string }) {
     setPublishing(false);
   }
 
-  async function save(inputs: NewShiftInput[]) {
-    for (const input of inputs) await createShift(token, input);
+  async function save(input: NewShiftsInput) {
+    await createShifts(token, input);
     setDialog(null);
-    const who = employees.get(inputs[0]!.employeeId)?.name;
-    setMessage(`Horario guardado como borrador para ${who}. Publicalo cuando esté listo.`);
-    setSelected(inputs[0]!.date);
+    const who = employees.get(input.employeeId)?.name;
+    const where = input.dates.length === 1 ? "" : ` en ${input.dates.length} días`;
+    setMessage(`Horario guardado como borrador para ${who}${where}. Publicalo cuando esté listo.`);
+    setSelected(input.dates[0]!);
     await load();
   }
 
@@ -286,6 +287,7 @@ export function OwnerSchedule({ token }: { token: string }) {
         <Modal title="Asignar horario" onClose={() => setDialog(null)}>
           <ShiftForm
             employees={data.employees}
+            month={data.month}
             dates={data.dates}
             templates={data.templates}
             initialEmployeeId={single ? filter : undefined}

@@ -51,10 +51,30 @@ export function prismaStore(db: PrismaClient): Store {
           ...(userId && { userId }),
           at: { gte: new Date(range.from), lt: new Date(range.to) },
         },
-        select: { clientEventId: true, userId: true, type: true, at: true },
+        select: {
+          clientEventId: true,
+          userId: true,
+          type: true,
+          at: true,
+          geoStatus: true,
+          distanceM: true,
+          accuracyM: true,
+        },
         orderBy: { at: "asc" },
       });
-      return rows.map((r) => ({ id: r.clientEventId, employeeId: r.userId, type: r.type, at: r.at.getTime() }));
+      return rows.map((r) => ({
+        id: r.clientEventId,
+        employeeId: r.userId,
+        type: r.type,
+        at: r.at.getTime(),
+        ...(r.geoStatus && {
+          geo: {
+            status: r.geoStatus,
+            ...(r.distanceM !== null && { distanceM: r.distanceM }),
+            ...(r.accuracyM !== null && { accuracyM: r.accuracyM }),
+          },
+        }),
+      }));
     },
 
     async listPublishedShifts(businessId, range, userId) {
@@ -71,7 +91,7 @@ export function prismaStore(db: PrismaClient): Store {
       return rows.map((r) => ({ id: r.id, employeeId: r.userId, start: r.startsAt.getTime(), end: r.endsAt.getTime() }));
     },
 
-    async insertPunch(punch, receivedAt): Promise<InsertResult> {
+    async insertPunch(punch, receivedAt, geo): Promise<InsertResult> {
       try {
         await db.punch.create({
           data: {
@@ -80,6 +100,9 @@ export function prismaStore(db: PrismaClient): Store {
             type: punch.type,
             at: new Date(punch.at),
             receivedAt: new Date(receivedAt),
+            geoStatus: geo?.status ?? null,
+            distanceM: geo?.distanceM ?? null,
+            accuracyM: geo?.accuracyM ?? null,
           },
         });
         return "created";
@@ -89,6 +112,22 @@ export function prismaStore(db: PrismaClient): Store {
         const existing = await db.punch.findUnique({ where: { clientEventId: punch.id }, select: { userId: true } });
         return existing?.userId === punch.employeeId ? "duplicate" : "conflict";
       }
+    },
+
+    async listWorkplaces(businessId) {
+      const rows = await db.location.findMany({
+        where: { businessId, lat: { not: null }, lng: { not: null }, radiusM: { not: null } },
+        select: { id: true, name: true, lat: true, lng: true, radiusM: true },
+      });
+      return rows.map((r) => ({ id: r.id, name: r.name, lat: r.lat!, lng: r.lng!, radiusM: r.radiusM! }));
+    },
+
+    async saveWorkplace(businessId, input) {
+      const existing = await db.location.findFirst({ where: { businessId }, select: { id: true } });
+      const r = existing
+        ? await db.location.update({ where: { id: existing.id }, data: input, select: { id: true } })
+        : await db.location.create({ data: { businessId, ...input }, select: { id: true } });
+      return { id: r.id, ...input };
     },
 
     async listTemplates(businessId) {
@@ -118,12 +157,17 @@ export function prismaStore(db: PrismaClient): Store {
       }));
     },
 
-    async createShift(shift) {
-      const r = await db.shift.create({
-        data: { userId: shift.employeeId, startsAt: new Date(shift.start), endsAt: new Date(shift.end), status: "DRAFT" },
-        select: { id: true },
-      });
-      return { id: r.id, ...shift, status: "DRAFT" };
+    async createShifts(shifts) {
+      // En una transacción: o se crean todos los días o ninguno.
+      const rows = await db.$transaction(
+        shifts.map((s) =>
+          db.shift.create({
+            data: { userId: s.employeeId, startsAt: new Date(s.start), endsAt: new Date(s.end), status: "DRAFT" },
+            select: { id: true },
+          }),
+        ),
+      );
+      return rows.map((r, i) => ({ id: r.id, ...shifts[i]!, status: "DRAFT" as const }));
     },
 
     async removeShift(businessId, id) {

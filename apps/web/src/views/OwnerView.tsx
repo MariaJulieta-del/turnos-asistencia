@@ -1,20 +1,22 @@
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { CalendarDays, Clock } from "lucide-react";
+import { CalendarDays, Clock, MapPin } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { FirstVisitTip } from "../components/FirstVisitTip";
 import { OwnerHours } from "./owner/OwnerHours";
 import { OwnerSchedule } from "./owner/OwnerSchedule";
+import { OwnerWorkplace } from "./owner/OwnerWorkplace";
 
 const HELP = "/ayuda#dueno";
 
 /**
- * Panel del dueño: Horarios (calendario semanal) y Horas (registro del mes).
+ * Panel del dueño: Horarios (calendario del mes), Horas (registro del mes) y Local (dónde se ficha).
  * PROVISORIO: entra por enlace con token, como los empleados. La auth del dueño es una decisión abierta.
  */
 export function OwnerView() {
   const { token = "" } = useParams();
   const [params] = useSearchParams();
-  const tab = params.get("vista") === "horas" ? "horas" : "horarios";
+  const vista = params.get("vista");
+  const tab = vista === "horas" || vista === "local" ? vista : "horarios";
   const base = token ? `/dueno/${token}` : "/dueno";
 
   return (
@@ -27,6 +29,10 @@ export function OwnerView() {
         <Link to={`${base}?vista=horas`} aria-current={tab === "horas" ? "page" : undefined}>
           <Clock size={18} aria-hidden="true" />
           Horas
+        </Link>
+        <Link to={`${base}?vista=local`} aria-current={tab === "local" ? "page" : undefined}>
+          <MapPin size={18} aria-hidden="true" />
+          Local
         </Link>
       </nav>
 
@@ -44,7 +50,9 @@ export function OwnerView() {
         </ol>
       </FirstVisitTip>
 
-      {tab === "horarios" ? <OwnerSchedule token={token} /> : <OwnerHours token={token} base={base} />}
+      {tab === "horarios" && <OwnerSchedule token={token} />}
+      {tab === "horas" && <OwnerHours token={token} base={base} />}
+      {tab === "local" && <OwnerWorkplace token={token} />}
     </AppShell>
   );
 }

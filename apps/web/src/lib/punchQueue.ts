@@ -1,9 +1,14 @@
+import type { PunchInput } from "@turnos/contract";
 import type { Punch, PunchType } from "@turnos/core";
 
-/** Dónde vive la cola. En el navegador es IndexedDB (localQueue.ts); en tests, memoria. */
+/**
+ * Dónde vive la cola. En el navegador es IndexedDB (localQueue.ts); en tests, memoria.
+ * Cada marca guarda su ubicación (si la hubo) tomada en el instante de fichar, así un envío
+ * posterior sin señal no la pierde ni la vuelve a pedir.
+ */
 export interface QueueStore {
-  load(): Promise<Punch[]>;
-  save(punches: Punch[]): Promise<void>;
+  load(): Promise<PunchInput[]>;
+  save(punches: PunchInput[]): Promise<void>;
 }
 
 /** Crea una marca con su clientEventId. El servidor deduplica por ese id, así reenviar nunca duplica. */
@@ -38,26 +43,26 @@ export class PunchQueue {
     return next;
   }
 
-  enqueue(p: Punch): Promise<void> {
+  enqueue(p: PunchInput): Promise<void> {
     return this.run(async () => {
       const list = await this.store.load();
       if (!list.some((x) => x.id === p.id)) await this.store.save([...list, p]);
     });
   }
 
-  pending(): Promise<Punch[]> {
+  pending(): Promise<PunchInput[]> {
     return this.run(() => this.store.load());
   }
 
   /** Envía en orden y corta en el primer error (sin señal no tiene sentido seguir probando). */
-  flush(send: (p: Punch) => Promise<void>): Promise<FlushResult> {
+  flush(send: (p: PunchInput) => Promise<void>): Promise<FlushResult> {
     this.flushing ??= this.doFlush(send).finally(() => {
       this.flushing = null;
     });
     return this.flushing;
   }
 
-  private async doFlush(send: (p: Punch) => Promise<void>): Promise<FlushResult> {
+  private async doFlush(send: (p: PunchInput) => Promise<void>): Promise<FlushResult> {
     let sent = 0;
     for (const p of await this.pending()) {
       try {
@@ -74,7 +79,7 @@ export class PunchQueue {
   }
 }
 
-export function memoryStore(initial: Punch[] = []): QueueStore {
+export function memoryStore(initial: PunchInput[] = []): QueueStore {
   let data = [...initial];
   return {
     load: async () => [...data],

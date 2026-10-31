@@ -1,15 +1,26 @@
 import type {
   EmployeeSnapshot,
   MonthSchedule,
-  NewShiftInput,
+  NewShiftsInput,
   PublishInput,
   PublishResult,
   PunchAck,
+  PunchInput,
   ScheduledShift,
   Snapshot,
+  Workplace,
+  WorkplaceInput,
 } from "@turnos/contract";
-import type { Punch } from "@turnos/core";
-import { DEMO_TOKENS, demoCreateShift, demoPublish, demoRemoveShift, demoSchedule, demoSnapshot } from "../demo";
+import {
+  DEMO_TOKENS,
+  demoCreateShifts,
+  demoPublish,
+  demoRemoveShift,
+  demoSaveWorkplace,
+  demoSchedule,
+  demoSnapshot,
+  demoWorkplace,
+} from "../demo";
 
 export type { Employee, EmployeeSnapshot, Snapshot } from "@turnos/contract";
 
@@ -47,7 +58,7 @@ export async function fetchOwnerSnapshot(token: string): Promise<Snapshot> {
 }
 
 /** Idempotente por punch.id (clientEventId): reenviar la misma marca no la duplica. */
-export async function sendPunch(token: string, punch: Punch): Promise<void> {
+export async function sendPunch(token: string, punch: PunchInput): Promise<void> {
   if (DEMO_MODE) throw new Error("Modo demo: sin API");
   await request<PunchAck>("/punches", token, { method: "POST", body: JSON.stringify(punch) });
 }
@@ -60,9 +71,23 @@ export async function fetchSchedule(token: string, month?: string): Promise<Mont
   return request(month ? `/owner/schedule?month=${month}` : "/owner/schedule", token);
 }
 
-export async function createShift(token: string, input: NewShiftInput): Promise<ScheduledShift> {
-  if (DEMO_MODE) return demoCreateShift(input);
+/** El mismo horario en uno o varios días, como borrador. */
+export async function createShifts(token: string, input: NewShiftsInput): Promise<ScheduledShift[]> {
+  if (DEMO_MODE) return demoCreateShifts(input);
   return request("/owner/shifts", token, { method: "POST", body: JSON.stringify(input) });
+}
+
+// ---------- Lugar de trabajo ----------
+
+export async function fetchWorkplace(token: string): Promise<Workplace | null> {
+  if (DEMO_MODE) return demoWorkplace();
+  return (await request<{ workplace: Workplace | null }>("/owner/workplace", token)).workplace;
+}
+
+export async function saveWorkplace(token: string, input: WorkplaceInput): Promise<Workplace> {
+  if (DEMO_MODE) return demoSaveWorkplace(input);
+  return (await request<{ workplace: Workplace }>("/owner/workplace", token, { method: "PUT", body: JSON.stringify(input) }))
+    .workplace;
 }
 
 export async function removeShift(token: string, id: string): Promise<"deleted" | "cancelled"> {

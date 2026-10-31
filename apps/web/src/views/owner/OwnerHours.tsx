@@ -4,7 +4,10 @@ import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight } from "lucide-r
 import { TimesheetView } from "../../components/TimesheetView";
 import { fetchOwnerSnapshot, type Snapshot } from "../../lib/api";
 import { formatMinutes, formatMonth, initials } from "../../lib/format";
-import { buildTimesheet } from "../../lib/timesheet";
+import { buildTimesheet, type Timesheet } from "../../lib/timesheet";
+
+/** Anomalías de marcas + avisos de ubicación. */
+const toReviewOf = (sheet: Timesheet) => sheet.anomalies.length + sheet.locationFlags.length;
 
 /** Horas del mes por empleado. Al tocar uno se ve el mismo registro que ve ese empleado. */
 export function OwnerHours({ token, base }: { token: string; base: string }) {
@@ -61,7 +64,7 @@ export function OwnerHours({ token, base }: { token: string; base: string }) {
   }
 
   const teamTotal = sheets.reduce((acc, s) => acc + s.sheet.hours.total.total, 0);
-  const toReview = sheets.reduce((acc, s) => acc + s.sheet.anomalies.length, 0);
+  const toReview = sheets.reduce((acc, s) => acc + toReviewOf(s.sheet), 0);
 
   return (
     <div className="stack-lg">
@@ -98,10 +101,10 @@ export function OwnerHours({ token, base }: { token: string; base: string }) {
               </span>
               <span className="row-end">
                 <span className="num">{formatMinutes(sheet.hours.total.total)}</span>
-                {sheet.anomalies.length > 0 ? (
+                {toReviewOf(sheet) > 0 ? (
                   <span className="badge warn">
                     <AlertTriangle size={14} aria-hidden="true" />
-                    {sheet.anomalies.length} a revisar
+                    {toReviewOf(sheet)} a revisar
                   </span>
                 ) : (
                   <span className="badge ok">

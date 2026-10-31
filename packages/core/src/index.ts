@@ -5,3 +5,4 @@ export * from "./hours";
 export * from "./rest";
 export * from "./attendance";
 export * from "./schedule";
+export * from "./geo";
