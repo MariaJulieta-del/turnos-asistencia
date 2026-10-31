@@ -1,131 +1,109 @@
-import { localDateKey, type PlannedShift } from "@turnos/core";
-import { ANOMALY_LABEL, ATTENDANCE_LABEL, formatDateKey, formatMinutes, formatTime } from "../lib/format";
+import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
+import { AlertTriangle, CalendarClock, CheckCircle2, Moon, Sun, TrendingUp } from "lucide-react";
+import { localDateKey, type AttendanceResult, type Interval, type PlannedShift } from "@turnos/core";
+import {
+  ANOMALY_HINT,
+  ANOMALY_LABEL,
+  ATTENDANCE_LABEL,
+  dateChip,
+  formatDateKey,
+  formatMinutes,
+  formatSpan,
+  formatTime,
+} from "../lib/format";
 import type { Timesheet } from "../lib/timesheet";
 
 interface Props {
   sheet: Timesheet;
   planned: readonly PlannedShift[];
   tzOffsetMinutes: number;
+  /** Cambia los consejos de "Para revisar" según quién mira. */
+  audience: "employee" | "owner";
+  periodLabel: string;
 }
+
+interface DayRow {
+  day: string;
+  intervals: Interval[];
+  minutes: number;
+  attendance?: AttendanceResult;
+  shift?: PlannedShift;
+}
+
+const ATTENDANCE_TONE = { ON_TIME: "ok", LATE: "warn", ABSENT: "danger" } as const;
 
 /**
  * Registro de horas de un empleado. Es el mismo componente en la vista del dueño y en la del empleado,
  * así los dos ven exactamente los mismos números.
  */
-export function TimesheetView({ sheet, planned, tzOffsetMinutes: tz }: Props) {
+export function TimesheetView({ sheet, planned, tzOffsetMinutes: tz, audience, periodLabel }: Props) {
   const { hours, intervals, anomalies, attendance, restViolations } = sheet;
-  const days = Object.keys(hours.byDay).sort();
   const shiftById = new Map(planned.map((s) => [s.id, s]));
 
+  // Un día aparece si tiene horas o si tenía un turno planificado (para que se vean las ausencias).
+  const rows = new Map<string, DayRow>();
+  const rowFor = (day: string) => {
+    let r = rows.get(day);
+    if (!r) rows.set(day, (r = { day, intervals: [], minutes: 0 }));
+    return r;
+  };
+  for (const [day, b] of Object.entries(hours.byDay)) rowFor(day).minutes = b.total;
+  for (const iv of intervals) rowFor(localDateKey(iv.start, tz)).intervals.push(iv);
+  for (const a of attendance) {
+    const s = shiftById.get(a.shiftId);
+    if (!s) continue;
+    const r = rowFor(localDateKey(s.start, tz));
+    r.attendance = a;
+    r.shift = s;
+  }
+  const days = [...rows.values()].sort((a, b) => b.day.localeCompare(a.day));
+
   return (
-    <div className="stack">
-      <section className="card">
-        <h3>Total del período</h3>
-        <dl className="totals">
-          <div>
-            <dt>Total</dt>
-            <dd>{formatMinutes(hours.total.total)}</dd>
-          </div>
-          <div>
-            <dt>Normales</dt>
-            <dd>{formatMinutes(hours.total.normal)}</dd>
-          </div>
-          <div>
-            <dt>Extra</dt>
-            <dd>{formatMinutes(hours.total.extra)}</dd>
-          </div>
-          <div>
-            <dt>Nocturnas</dt>
-            <dd>{formatMinutes(hours.total.night)}</dd>
-          </div>
-          <div>
-            <dt>Feriado</dt>
-            <dd>{formatMinutes(hours.total.holiday)}</dd>
-          </div>
-        </dl>
+    <div className="stack-lg">
+      <section className="card" aria-labelledby="totals-title">
+        <div className="stat-hero">
+          <span id="totals-title" className="muted small">
+            Horas trabajadas en {periodLabel}
+          </span>
+          <span className="value">{formatMinutes(hours.total.total)}</span>
+        </div>
+        <div className="stats">
+          <Stat icon={<Sun size={14} />} label="Normales" value={hours.total.normal} />
+          <Stat icon={<TrendingUp size={14} />} label="Extra" value={hours.total.extra} />
+          <Stat icon={<Moon size={14} />} label="Nocturnas" value={hours.total.night} />
+          <Stat icon={<CalendarClock size={14} />} label="Feriado" value={hours.total.holiday} />
+        </div>
         <p className="muted small">
-          Categorías según reglas configuradas del comercio (supuestos, no asesoramiento legal).
+          Las categorías siguen las reglas cargadas para el comercio.{" "}
+          <Link to="/ayuda#glosario">¿Qué significa cada una?</Link>
         </p>
       </section>
 
       {anomalies.length > 0 && (
-        <section className="card warn">
-          <h3>Para revisar ({anomalies.length})</h3>
-          <p className="muted small">
-            Las resuelve el dueño. Una entrada sin salida no suma horas; un turno de más de 16 h se suma igual.
-          </p>
+        <section className="callout warn" aria-labelledby="review-title">
+          <div className="callout-head">
+            <AlertTriangle size={20} aria-hidden="true" />
+            <h3 id="review-title">Para revisar ({anomalies.length})</h3>
+          </div>
           <ul>
             {anomalies.map((a) => (
               <li key={`${a.kind}-${a.punchId ?? a.at}`}>
-                {ANOMALY_LABEL[a.kind]} — {formatDateKey(localDateKey(a.at, tz))} {formatTime(a.at, tz)}
+                <strong>{ANOMALY_LABEL[a.kind]}</strong>
+                <span className="muted"> · {formatDateKey(localDateKey(a.at, tz))} {formatTime(a.at, tz)}</span>
+                <p className="small">{ANOMALY_HINT[a.kind][audience]}</p>
               </li>
             ))}
           </ul>
         </section>
       )}
 
-      <section className="card">
-        <h3>Por día</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Día</th>
-              <th>Tramos</th>
-              <th className="num">Horas</th>
-            </tr>
-          </thead>
-          <tbody>
-            {days.map((day) => (
-              <tr key={day}>
-                <td>{formatDateKey(day)}</td>
-                <td>
-                  {intervals
-                    .filter((iv) => localDateKey(iv.start, tz) === day)
-                    .map((iv) => {
-                      const endDay = localDateKey(iv.end, tz);
-                      // Un tramo que termina otro día lo dice, para que 09:00–21:45 no parezca de 12 h.
-                      const suffix = endDay === day ? "" : ` (${formatDateKey(endDay)})`;
-                      return `${formatTime(iv.start, tz)}–${formatTime(iv.end, tz)}${suffix}`;
-                    })
-                    .join(", ")}
-                </td>
-                <td className="num">{formatMinutes(hours.byDay[day]!.total)}</td>
-              </tr>
-            ))}
-            {days.length === 0 && (
-              <tr>
-                <td colSpan={3} className="muted">
-                  Sin horas registradas.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </section>
-
-      {attendance.length > 0 && (
-        <section className="card">
-          <h3>Turnos planificados</h3>
-          <ul className="plain">
-            {attendance.map((r) => {
-              const s = shiftById.get(r.shiftId);
-              return (
-                <li key={r.shiftId}>
-                  {s && `${formatDateKey(localDateKey(s.start, tz))} ${formatTime(s.start, tz)}–${formatTime(s.end, tz)}`}{" "}
-                  <span className={`badge ${r.status.toLowerCase()}`}>
-                    {ATTENDANCE_LABEL[r.status]}
-                    {r.status === "LATE" && ` (${r.lateMin} min)`}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
-
       {restViolations.length > 0 && (
-        <section className="card warn">
-          <h3>Descanso entre jornadas menor al configurado</h3>
+        <section className="callout warn" aria-labelledby="rest-title">
+          <div className="callout-head">
+            <AlertTriangle size={20} aria-hidden="true" />
+            <h3 id="rest-title">Poco descanso entre jornadas</h3>
+          </div>
           <ul>
             {restViolations.map((v) => (
               <li key={v.previousEnd}>
@@ -135,6 +113,72 @@ export function TimesheetView({ sheet, planned, tzOffsetMinutes: tz }: Props) {
           </ul>
         </section>
       )}
+
+      <section className="stack" aria-labelledby="days-title">
+        <h3 id="days-title">Día por día</h3>
+        {days.length === 0 ? (
+          <p className="card muted">Todavía no hay marcas ni turnos en este período.</p>
+        ) : (
+          <ul className="list">
+            {days.map((r) => {
+              const chip = dateChip(r.day);
+              return (
+                <li key={r.day} className="row">
+                  <div className="date-chip" aria-label={formatDateKey(r.day)}>
+                    <span className="wd" aria-hidden="true">
+                      {chip.weekday}
+                    </span>
+                    <span className="d" aria-hidden="true">
+                      {chip.day}
+                    </span>
+                  </div>
+                  <div className="row-main">
+                    <span>
+                      {r.intervals.length
+                        ? r.intervals.map((iv) => formatSpan(iv.start, iv.end, tz)).join(", ")
+                        : "Sin marcas completas"}
+                    </span>
+                    {r.shift && (
+                      <span className="muted small">Turno {formatSpan(r.shift.start, r.shift.end, tz)}</span>
+                    )}
+                  </div>
+                  <div className="row-end">
+                    <span className="num">{formatMinutes(r.minutes)}</span>
+                    {r.attendance && <AttendanceBadge result={r.attendance} />}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
     </div>
+  );
+}
+
+function Stat({ icon, label, value }: { icon: ReactNode; label: string; value: number }) {
+  return (
+    <div className="stat">
+      <span className="label">
+        <span aria-hidden="true">{icon}</span>
+        {label}
+      </span>
+      <span className="value">{formatMinutes(value)}</span>
+    </div>
+  );
+}
+
+export function AttendanceBadge({ result }: { result: AttendanceResult }) {
+  const tone = ATTENDANCE_TONE[result.status];
+  return (
+    <span className={`badge ${tone}`}>
+      {result.status === "ON_TIME" ? (
+        <CheckCircle2 size={14} aria-hidden="true" />
+      ) : (
+        <AlertTriangle size={14} aria-hidden="true" />
+      )}
+      {ATTENDANCE_LABEL[result.status]}
+      {result.status === "LATE" && ` ${result.lateMin} min`}
+    </span>
   );
 }

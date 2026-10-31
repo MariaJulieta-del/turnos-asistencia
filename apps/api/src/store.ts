@@ -1,4 +1,4 @@
-import type { Employee } from "@turnos/contract";
+import type { Employee, ScheduledShift, ShiftTemplate } from "@turnos/contract";
 import type { PlannedShift, Punch } from "@turnos/core";
 
 /** Acceso a datos. La API habla solo con esta interfaz: Prisma en producción, memoria en tests y demo. */
@@ -44,4 +44,18 @@ export interface Store {
    * si existe de otro usuario, "conflict". Nunca pisa una marca guardada.
    */
   insertPunch(punch: Punch, receivedAt: number): Promise<InsertResult>;
+
+  // ---------- Horarios ----------
+  listTemplates(businessId: string): Promise<ShiftTemplate[]>;
+  /** Borradores y publicados (no cancelados) que empiezan en el rango. */
+  listShifts(businessId: string, range: Range): Promise<ScheduledShift[]>;
+  /** Crea un turno en borrador. */
+  createShift(shift: { employeeId: string; start: number; end: number }): Promise<ScheduledShift>;
+  /**
+   * Un borrador se borra. Uno publicado se cancela (queda el registro de que existió).
+   * "not_found" si no existe o es de otro comercio.
+   */
+  removeShift(businessId: string, id: string): Promise<"deleted" | "cancelled" | "not_found">;
+  /** Publica los borradores del rango. Devuelve cuántos. */
+  publishShifts(businessId: string, range: Range): Promise<number>;
 }

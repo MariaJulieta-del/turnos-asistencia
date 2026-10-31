@@ -23,6 +23,10 @@ Todas con `Authorization: Bearer <token del enlace personal>`. El token se guard
 | `GET /health` | cualquiera | Chequeo de vida. |
 | `GET /me/snapshot?month=YYYY-MM` | cualquier usuario | Reglas del comercio, sus marcas y sus turnos publicados del mes (default: mes actual del comercio). |
 | `GET /owner/snapshot?month=YYYY-MM` | `OWNER`, `MANAGER` | Lo mismo para todo el equipo. |
+| `GET /owner/schedule?month=YYYY-MM` | `OWNER`, `MANAGER` | Calendario del mes: turnos (borradores y publicados), marcas reales y plantillas de toda la grilla visible (semanas completas de lunes a domingo). |
+| `POST /owner/shifts` | `OWNER`, `MANAGER` | Asigna un turno en borrador: `{ employeeId, date, startMin, endMin }`. Un horario cortado son dos turnos el mismo día. Si `endMin <= startMin`, termina al día siguiente. |
+| `DELETE /owner/shifts/:id` | `OWNER`, `MANAGER` | Borrador: se borra. Publicado: se cancela (queda registrado). |
+| `POST /owner/schedule/publish` | `OWNER`, `MANAGER` | Publica los borradores entre `from` y `to` (fechas locales, inclusive). |
 | `POST /punches` | cualquier usuario | Guarda una marca. Idempotente por `id` (clientEventId): `201 created`, `200 duplicate`. Solo para uno mismo (`403`); un id ya usado por otra persona es `409` y no pisa nada. Campos desconocidos: `400`. |
 
 ## Estructura
@@ -38,7 +42,8 @@ Todas con `Authorization: Bearer <token del enlace personal>`. El token se guard
 ## Pendiente
 
 - **Auth del dueño**: hoy entra por enlace con token como los empleados. Es provisorio (decisión abierta).
-- Rutas del dueño: grilla y publicación de turnos, corrección de marcas (`source: MANUAL`, `editedById`), resolución de anomalías, aprobación de cambios de turno.
+- Rutas del dueño: corrección de marcas (`source: MANUAL`, `editedById`), resolución de anomalías, aprobación de cambios de turno, edición de plantillas.
+- Aviso por WhatsApp al publicar (enlace `wa.me` por empleado).
 - Ubicación al fichar (`lat`, `lng`, geovalla), solo con consentimiento.
 - Exportación CSV.
 - Bordes del mes: el snapshot corta exacto en las 00:00 locales, así que una salida pasada la medianoche del último día queda en el mes siguiente y se ve como anomalía en los dos meses.

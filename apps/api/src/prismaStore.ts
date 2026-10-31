@@ -90,5 +90,63 @@ export function prismaStore(db: PrismaClient): Store {
         return existing?.userId === punch.employeeId ? "duplicate" : "conflict";
       }
     },
+
+    async listTemplates(businessId) {
+      return db.shiftTemplate.findMany({
+        where: { businessId },
+        select: { id: true, name: true, startMin: true, endMin: true },
+        orderBy: { startMin: "asc" },
+      });
+    },
+
+    async listShifts(businessId, range) {
+      const rows = await db.shift.findMany({
+        where: {
+          user: { businessId },
+          status: { in: ["DRAFT", "PUBLISHED"] },
+          startsAt: { gte: new Date(range.from), lt: new Date(range.to) },
+        },
+        select: { id: true, userId: true, startsAt: true, endsAt: true, status: true },
+        orderBy: { startsAt: "asc" },
+      });
+      return rows.map((r) => ({
+        id: r.id,
+        employeeId: r.userId,
+        start: r.startsAt.getTime(),
+        end: r.endsAt.getTime(),
+        status: r.status as "DRAFT" | "PUBLISHED",
+      }));
+    },
+
+    async createShift(shift) {
+      const r = await db.shift.create({
+        data: { userId: shift.employeeId, startsAt: new Date(shift.start), endsAt: new Date(shift.end), status: "DRAFT" },
+        select: { id: true },
+      });
+      return { id: r.id, ...shift, status: "DRAFT" };
+    },
+
+    async removeShift(businessId, id) {
+      const s = await db.shift.findFirst({ where: { id, user: { businessId } }, select: { status: true } });
+      if (!s || s.status === "CANCELLED") return "not_found";
+      if (s.status === "DRAFT") {
+        await db.shift.delete({ where: { id } });
+        return "deleted";
+      }
+      await db.shift.update({ where: { id }, data: { status: "CANCELLED" } });
+      return "cancelled";
+    },
+
+    async publishShifts(businessId, range) {
+      const r = await db.shift.updateMany({
+        where: {
+          user: { businessId },
+          status: "DRAFT",
+          startsAt: { gte: new Date(range.from), lt: new Date(range.to) },
+        },
+        data: { status: "PUBLISHED" },
+      });
+      return r.count;
+    },
   };
 }

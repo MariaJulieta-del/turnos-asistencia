@@ -22,6 +22,8 @@ export default defineConfig({
       workbox: {
         // La app abre sin señal; las marcas viajan por la cola de src/lib/punchQueue.ts, no por el SW.
         navigateFallback: "/index.html",
+        // Las fuentes van empaquetadas; sin esto la app sin señal caería a la fuente del sistema.
+        globPatterns: ["**/*.{js,css,html,svg,woff2}"],
       },
     }),
   ],

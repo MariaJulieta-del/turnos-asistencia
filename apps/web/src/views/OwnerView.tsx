@@ -1,75 +1,50 @@
-import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
-import { TimesheetView } from "../components/TimesheetView";
-import { DEMO_MODE, fetchOwnerSnapshot, type Snapshot } from "../lib/api";
-import { formatMinutes } from "../lib/format";
-import { buildTimesheet } from "../lib/timesheet";
-import { DEMO_SNAPSHOT } from "../demo";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { CalendarDays, Clock } from "lucide-react";
+import { AppShell } from "../components/AppShell";
+import { FirstVisitTip } from "../components/FirstVisitTip";
+import { OwnerHours } from "./owner/OwnerHours";
+import { OwnerSchedule } from "./owner/OwnerSchedule";
+
+const HELP = "/ayuda#dueno";
 
 /**
- * Vista del dueño: resumen por empleado y detalle con el mismo registro que ve cada empleado.
+ * Panel del dueño: Horarios (calendario semanal) y Horas (registro del mes).
  * PROVISORIO: entra por enlace con token, como los empleados. La auth del dueño es una decisión abierta.
  */
 export function OwnerView() {
   const { token = "" } = useParams();
-  const [data, setData] = useState<Snapshot | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
-
-  useEffect(() => {
-    (DEMO_MODE ? Promise.resolve(DEMO_SNAPSHOT) : fetchOwnerSnapshot(token)).then(setData, (e: Error) =>
-      setError(e.message),
-    );
-  }, [token]);
-
-  const sheets = useMemo(
-    () => data?.employees.map((e) => ({ employee: e, sheet: buildTimesheet(e.id, data.punches, data.planned, data.business) })) ?? [],
-    [data],
-  );
-
-  if (error) return <p className="card warn">{error}</p>;
-  if (!data) return <p className="muted">Cargando…</p>;
-
-  const current = sheets.find((s) => s.employee.id === selected);
+  const [params] = useSearchParams();
+  const tab = params.get("vista") === "horas" ? "horas" : "horarios";
+  const base = token ? `/dueno/${token}` : "/dueno";
 
   return (
-    <div className="stack">
-      <h2>Horas del equipo</h2>
-      <section className="card">
-        <table>
-          <thead>
-            <tr>
-              <th>Empleado</th>
-              <th className="num">Total</th>
-              <th className="num">Extra</th>
-              <th className="num">Noct.</th>
-              <th className="num">Revisar</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sheets.map(({ employee, sheet }) => (
-              <tr
-                key={employee.id}
-                className={employee.id === selected ? "selected clickable" : "clickable"}
-                onClick={() => setSelected(employee.id === selected ? null : employee.id)}
-              >
-                <td>{employee.name}</td>
-                <td className="num">{formatMinutes(sheet.hours.total.total)}</td>
-                <td className="num">{formatMinutes(sheet.hours.total.extra)}</td>
-                <td className="num">{formatMinutes(sheet.hours.total.night)}</td>
-                <td className="num">{sheet.anomalies.length || "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+    <AppShell helpHref={HELP}>
+      <nav className="tabs" aria-label="Secciones del panel">
+        <Link to={base} aria-current={tab === "horarios" ? "page" : undefined}>
+          <CalendarDays size={18} aria-hidden="true" />
+          Horarios
+        </Link>
+        <Link to={`${base}?vista=horas`} aria-current={tab === "horas" ? "page" : undefined}>
+          <Clock size={18} aria-hidden="true" />
+          Horas
+        </Link>
+      </nav>
 
-      {current && (
-        <>
-          <h3>{current.employee.name}</h3>
-          <TimesheetView sheet={current.sheet} planned={data.planned} tzOffsetMinutes={data.business.tzOffsetMinutes} />
-        </>
-      )}
-    </div>
+      <FirstVisitTip id="dueno" title="¿Primera vez? Así se usa el panel" helpHref={HELP}>
+        <ol className="tip-list">
+          <li>
+            El calendario muestra el horario de cada empleado con su color. Con <strong>Ver horario de</strong> elegís
+            ver a uno solo.
+          </li>
+          <li>
+            Tocá un día y <strong>Asignar horario</strong>: de corrido o cortado. Queda en borrador hasta que tocás{" "}
+            <strong>Publicar horarios</strong>.
+          </li>
+          <li>A medida que marcan, cada día muestra lo trabajado y las horas extra.</li>
+        </ol>
+      </FirstVisitTip>
+
+      {tab === "horarios" ? <OwnerSchedule token={token} /> : <OwnerHours token={token} base={base} />}
+    </AppShell>
   );
 }
