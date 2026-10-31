@@ -1,0 +1,19 @@
+{
+  "name": "@turnos/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Esquema Prisma + PostgreSQL del sistema de turnos y asistencia.",
+  "scripts": {
+    "validate": "prisma validate",
+    "format": "prisma format",
+    "generate": "prisma generate",
+    "migrate:dev": "prisma migrate dev"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0"
+  },
+  "devDependencies": {
+    "prisma": "^5.22.0"
+  }
+}

@@ -1,0 +1,180 @@
+// Esquema inicial. Multi-comercio (tenant) desde el día uno: todo cuelga de Business.
+// Los instantes se guardan en UTC (timestamptz); la zona horaria vive en Business.timezone.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  MANAGER
+  EMPLOYEE
+}
+
+enum ShiftStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+}
+
+enum PunchType {
+  IN
+  OUT
+}
+
+enum PunchSource {
+  APP
+  MANUAL // cargada/corregida por el dueño
+}
+
+enum SwapStatus {
+  PENDING_PEER // esperando que el compañero acepte
+  PENDING_OWNER // esperando aprobación del dueño
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum DayOffKind {
+  FRANCO
+  VACACIONES
+  LICENCIA
+}
+
+model Business {
+  id           String   @id @default(cuid())
+  name         String
+  timezone     String   @default("America/Argentina/Cordoba")
+  // Reglas de horas configurables (ver docs/REGLAS_HORAS.md). Son supuestos hasta validar convenio.
+  nightStartMin Int     @default(1260) // 21:00
+  nightEndMin   Int     @default(360) // 06:00
+  dailyNormalMin Int    @default(480)
+  minRestMin    Int     @default(720)
+  graceMin      Int     @default(5)
+  createdAt    DateTime @default(now())
+
+  users        User[]
+  locations    Location[]
+  shiftTemplates ShiftTemplate[]
+  holidays     Holiday[]
+}
+
+model User {
+  id          String   @id @default(cuid())
+  businessId  String
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name        String
+  phone       String? // WhatsApp, formato E.164 (+549351...)
+  role        Role     @default(EMPLOYEE)
+  active      Boolean  @default(true)
+  // Token de acceso por enlace mágico (se guarda hasheado). Sin contraseñas para empleados.
+  accessTokenHash String? @unique
+  createdAt   DateTime @default(now())
+
+  shifts      Shift[]
+  punches     Punch[]
+  daysOff     DayOff[]
+  swapsRequested ShiftSwap[] @relation("SwapRequester")
+  swapsReceived  ShiftSwap[] @relation("SwapPeer")
+
+  @@index([businessId, active])
+}
+
+model Location {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name       String
+  // Geovalla opcional. Requiere consentimiento informado del empleado; validar con laboralista (Ley 25.326).
+  lat        Float?
+  lng        Float?
+  radiusM    Int?
+
+  shifts     Shift[]
+  punches    Punch[]
+}
+
+model ShiftTemplate {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name       String // "Mañana", "Tarde", "Cierre"
+  startMin   Int // minutos desde 00:00 local
+  endMin     Int // si endMin <= startMin, cruza medianoche
+}
+
+model Shift {
+  id         String      @id @default(cuid())
+  userId     String
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  locationId String?
+  location   Location?   @relation(fields: [locationId], references: [id])
+  startsAt   DateTime
+  endsAt     DateTime
+  status     ShiftStatus @default(DRAFT)
+  createdAt  DateTime    @default(now())
+
+  swaps      ShiftSwap[]
+
+  @@index([userId, startsAt])
+}
+
+model Punch {
+  id            String      @id @default(cuid())
+  // Id generado en el celular: hace idempotente el reenvío de marcas hechas offline.
+  clientEventId String      @unique
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  locationId    String?
+  location      Location?   @relation(fields: [locationId], references: [id])
+  type          PunchType
+  at            DateTime // instante de la marca según el celular
+  receivedAt    DateTime    @default(now()) // instante en que llegó al servidor (para detectar relojes cambiados)
+  source        PunchSource @default(APP)
+  // Ubicación solo en el instante de fichar, y solo si hay consentimiento. Nunca seguimiento continuo.
+  lat           Float?
+  lng           Float?
+  insideGeofence Boolean?
+  editedById    String? // si el dueño la corrigió
+  note          String?
+
+  @@index([userId, at])
+}
+
+model ShiftSwap {
+  id          String     @id @default(cuid())
+  shiftId     String
+  shift       Shift      @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  requesterId String
+  requester   User       @relation("SwapRequester", fields: [requesterId], references: [id])
+  peerId      String
+  peer        User       @relation("SwapPeer", fields: [peerId], references: [id])
+  status      SwapStatus @default(PENDING_PEER)
+  createdAt   DateTime   @default(now())
+  decidedAt   DateTime?
+}
+
+model DayOff {
+  id     String     @id @default(cuid())
+  userId String
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date   String // "YYYY-MM-DD" local
+  kind   DayOffKind @default(FRANCO)
+
+  @@unique([userId, date])
+}
+
+model Holiday {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  date       String // "YYYY-MM-DD" local
+  name       String
+
+  @@unique([businessId, date])
+}

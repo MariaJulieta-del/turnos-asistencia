@@ -1,0 +1,9 @@
+{
+  "name": "@turnos/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "description": "Lógica de dominio pura: marcas de asistencia, cálculo de horas y reglas de descanso. Sin base de datos ni red."
+}

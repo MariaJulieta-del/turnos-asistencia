@@ -1,0 +1,20 @@
+{
+  "name": "turnos-asistencia",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Horarios, turnos y asistencia de empleados para comercios",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "db:validate": "npm run validate -w @turnos/db",
+    "db:format": "npm run format -w @turnos/db"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
