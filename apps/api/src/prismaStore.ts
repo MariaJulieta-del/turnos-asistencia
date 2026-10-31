@@ -1,0 +1,94 @@
+import { Prisma, type PrismaClient } from "@prisma/client";
+import type { InsertResult, Store } from "./store";
+
+/** Store sobre packages/db (Prisma + PostgreSQL). */
+export function prismaStore(db: PrismaClient): Store {
+  return {
+    async findUserByTokenHash(hash) {
+      const u = await db.user.findFirst({
+        where: { accessTokenHash: hash, active: true },
+        select: { id: true, businessId: true, name: true, role: true },
+      });
+      return u;
+    },
+
+    async getBusiness(id) {
+      return db.business.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          timezone: true,
+          nightStartMin: true,
+          nightEndMin: true,
+          dailyNormalMin: true,
+          minRestMin: true,
+          graceMin: true,
+        },
+      });
+    },
+
+    async listHolidays(businessId, month) {
+      const rows = await db.holiday.findMany({
+        where: { businessId, date: { startsWith: `${month}-` } },
+        select: { date: true },
+        orderBy: { date: "asc" },
+      });
+      return rows.map((r) => r.date);
+    },
+
+    async listActiveUsers(businessId) {
+      return db.user.findMany({
+        where: { businessId, active: true },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      });
+    },
+
+    async listPunches(businessId, range, userId) {
+      const rows = await db.punch.findMany({
+        where: {
+          user: { businessId },
+          ...(userId && { userId }),
+          at: { gte: new Date(range.from), lt: new Date(range.to) },
+        },
+        select: { clientEventId: true, userId: true, type: true, at: true },
+        orderBy: { at: "asc" },
+      });
+      return rows.map((r) => ({ id: r.clientEventId, employeeId: r.userId, type: r.type, at: r.at.getTime() }));
+    },
+
+    async listPublishedShifts(businessId, range, userId) {
+      const rows = await db.shift.findMany({
+        where: {
+          user: { businessId },
+          ...(userId && { userId }),
+          status: "PUBLISHED",
+          startsAt: { gte: new Date(range.from), lt: new Date(range.to) },
+        },
+        select: { id: true, userId: true, startsAt: true, endsAt: true },
+        orderBy: { startsAt: "asc" },
+      });
+      return rows.map((r) => ({ id: r.id, employeeId: r.userId, start: r.startsAt.getTime(), end: r.endsAt.getTime() }));
+    },
+
+    async insertPunch(punch, receivedAt): Promise<InsertResult> {
+      try {
+        await db.punch.create({
+          data: {
+            clientEventId: punch.id,
+            userId: punch.employeeId,
+            type: punch.type,
+            at: new Date(punch.at),
+            receivedAt: new Date(receivedAt),
+          },
+        });
+        return "created";
+      } catch (e) {
+        // P2002: clientEventId ya existe -> reintento offline (o colisión de id de otra persona).
+        if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== "P2002") throw e;
+        const existing = await db.punch.findUnique({ where: { clientEventId: punch.id }, select: { userId: true } });
+        return existing?.userId === punch.employeeId ? "duplicate" : "conflict";
+      }
+    },
+  };
+}

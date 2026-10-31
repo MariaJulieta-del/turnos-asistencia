@@ -16,13 +16,17 @@ apps/web (PWA)  ──►  API (pendiente)  ──►  packages/db (Prisma / Pos
       └────────────────────┴──►  packages/core (lógica pura)
 ```
 
-- **apps/web**: dos vistas. Dueño: grilla mensual, aprobaciones, anomalías, reporte de horas. Empleado: mi horario, botón fichar, pedir cambio de turno. Empleados entran por enlace personal (sin contraseña).
-- **API**: pendiente de decidir framework. Debe ser fina: valida, persiste y llama a `core`.
+- **apps/web** (Vite + React, PWA): dos vistas. Dueño: grilla mensual, aprobaciones, anomalías, reporte de horas. Empleado: mi horario, botón fichar, pedir cambio de turno. Empleados entran por enlace personal (sin contraseña).
+- **Registro compartido**: el empleado ve sus propias marcas, horas y anomalías con el mismo cálculo (`buildTimesheet`) y el mismo componente que el dueño. Ninguno depende de lo que diga el otro.
+- **API** (`apps/api`, Fastify): fina. Autentica, valida y persiste; devuelve datos crudos por mes y el cliente calcula con `core`. Los tipos compartidos viven en `packages/contract`. Detalle de rutas en `apps/api/README.md`.
+
+## Decisión: Vite + React y Fastify (2026-10-30)
+
+Elegido sobre Next.js porque fichar sin conexión es central (service worker y cola en IndexedDB son más simples en una app de una sola página) y porque una API separada mantiene fina la capa de servidor. Costo: dos deploys y CORS/auth entre ellos. Next.js no aporta SSR útil a una app con login.
 - **Aviso por WhatsApp**: primera versión con enlace `wa.me` prearmado (costo cero, el dueño toca enviar). La API oficial de WhatsApp Business cobra por mensaje y se evalúa después.
 
 ## Decisiones abiertas
 
-- Framework de API/web (candidato: Next.js o Fastify + Vite).
 - Autenticación del dueño (email + contraseña vs. enlace mágico).
 - Hosting y costo mensual por comercio.
 - Cómo exportar para el contador (CSV primero).
