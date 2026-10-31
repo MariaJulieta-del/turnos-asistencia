@@ -178,6 +178,56 @@ a {
   min-height: 56px;
 }
 
+.demo-nav {
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.demo-nav-inner {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--space-1) var(--space-4);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* Con el calendario la página se ensancha; la barra acompaña. */
+.topbar:has(~ .page .cal) .demo-nav-inner,
+.topbar:has(~ .page .cal) .topbar-inner {
+  max-width: 1040px;
+}
+
+.demo-nav-label {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  margin-right: var(--space-1);
+}
+
+.demo-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 var(--space-3);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background-color var(--dur-fast) ease-out;
+}
+
+.demo-nav-link:hover {
+  background: var(--surface-2);
+}
+
+.demo-nav-link[aria-current="page"] {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
 .brand {
   display: inline-flex;
   align-items: center;
