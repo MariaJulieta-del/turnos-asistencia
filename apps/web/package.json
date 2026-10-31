@@ -11,9 +11,12 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@fontsource-variable/outfit": "^5.1.0",
+    "@fontsource-variable/work-sans": "^5.1.0",
     "@turnos/contract": "*",
     "@turnos/core": "*",
     "idb-keyval": "^6.2.1",
+    "lucide-react": "^0.460.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.0"

@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { Punch } from "@turnos/core";
 import { memoryStore, newPunch, PunchQueue } from "../src/lib/punchQueue";
-import { buildTimesheet, nextPunchType } from "../src/lib/timesheet";
-import { DEMO_SNAPSHOT } from "../src/demo";
+import { buildCalendar } from "../src/lib/calendar";
+import { buildTimesheet, checkSchedule, nextPunchType } from "../src/lib/timesheet";
+import { demoSnapshot } from "../src/demo";
+
+const DEMO_SNAPSHOT = demoSnapshot();
 
 let n = 0;
 const id = () => `p${++n}`;
@@ -68,10 +71,44 @@ describe("timesheet", () => {
     expect(s.attendance.map((a) => a.status)).toEqual(["ON_TIME", "LATE", "ON_TIME", "ABSENT"]);
   });
 
+  it("un turno que todavía no terminó no figura como ausente", () => {
+    const shift = { id: "s", employeeId: "e1", start: 1_000_000, end: 2_000_000 };
+    expect(buildTimesheet("e1", [], [shift], business, 1_500_000).attendance).toEqual([]);
+    expect(buildTimesheet("e1", [], [shift], business, 2_000_000).attendance.map((a) => a.status)).toEqual(["ABSENT"]);
+  });
+
   it("una marca pendiente que el servidor ya tiene no se cuenta dos veces", () => {
     const dup: Punch = { ...punches[0]! };
     const s = buildTimesheet("e1", [...punches, dup], planned, business);
     expect(s.hours.total.total).toBe(483 + 460 + 600);
+  });
+
+  it("avisa turnos superpuestos y poco descanso, pero no el horario cortado", () => {
+    const h = 3_600_000;
+    const w = checkSchedule(
+      [
+        { id: "a", employeeId: "e1", start: 14 * h, end: 22 * h }, // día 1
+        { id: "b", employeeId: "e1", start: 21 * h, end: 23 * h }, // se superpone con a
+        { id: "c", employeeId: "e1", start: 30 * h, end: 34 * h }, // día 2 06–10: 7 h de descanso
+        { id: "d", employeeId: "e1", start: 38 * h, end: 42 * h }, // día 2 14–18: cortado, no avisa
+        { id: "e", employeeId: "e2", start: 30 * h, end: 34 * h },
+      ],
+      720,
+      0,
+    );
+    expect(w.map((x) => x.kind)).toEqual(["overlap", "short_rest"]);
+  });
+
+  it("el calendario junta horario cortado, lo marcado y las horas extra del día", () => {
+    const snap = demoSnapshot();
+    const shifts = snap.planned.map((s) => ({ ...s, status: "PUBLISHED" as const }));
+    const cal = buildCalendar(snap.employees, shifts, snap.punches, snap.business);
+    const ana28 = cal.get("2026-10-28")?.find((e) => e.employeeId === "e1");
+    expect(ana28?.plannedMin).toBe(480);
+    expect(ana28?.workedMin).toBe(600);
+    expect(ana28?.extraMin).toBe(120);
+    // El 29 tiene turno pero la salida no se marcó: queda la anomalía en ese día.
+    expect(cal.get("2026-10-29")?.find((e) => e.employeeId === "e1")?.anomalies.map((a) => a.kind)).toEqual(["OPEN_IN"]);
   });
 
   it("propone salida si la última marca es una entrada", () => {

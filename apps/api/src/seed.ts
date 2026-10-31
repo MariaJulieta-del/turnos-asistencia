@@ -45,6 +45,11 @@ export function demoData(): MemoryData {
       { id: "e2", businessId: "b1", name: "Bruno Díaz", role: "EMPLOYEE", tokenHash: hashToken("bruno"), active: true },
     ],
     holidays: [],
+    templates: [
+      { id: "t1", businessId: "b1", name: "Mañana", startMin: 9 * 60, endMin: 17 * 60 },
+      { id: "t2", businessId: "b1", name: "Tarde", startMin: 14 * 60, endMin: 22 * 60 },
+      { id: "t3", businessId: "b1", name: "Cierre", startMin: 17 * 60, endMin: 60 },
+    ],
     shifts: [
       ...["2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29"].map((d) => shift("e1", d, "09:00", "17:00")),
       ...["2026-10-26", "2026-10-27", "2026-10-28"].map((d) => shift("e2", d, "14:00", "22:00")),

@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import type { ShiftTemplate } from "@turnos/contract";
 import type { PlannedShift, Punch } from "@turnos/core";
 import type { AuthUser, BusinessRow, InsertResult, Range, Store } from "./store";
 
@@ -5,6 +7,7 @@ export interface MemoryData {
   businesses: BusinessRow[];
   users: (AuthUser & { tokenHash?: string; active: boolean })[];
   holidays: { businessId: string; date: string }[];
+  templates: (ShiftTemplate & { businessId: string })[];
   shifts: (PlannedShift & { status: "DRAFT" | "PUBLISHED" | "CANCELLED" })[];
   punches: (Punch & { receivedAt: number })[];
 }
@@ -53,6 +56,52 @@ export function memoryStore(data: MemoryData): Store & { data: MemoryData } {
       if (existing) return existing.employeeId === punch.employeeId ? "duplicate" : "conflict";
       data.punches.push({ ...punch, receivedAt });
       return "created";
+    },
+    async listTemplates(businessId) {
+      return data.templates
+        .filter((t) => t.businessId === businessId)
+        .sort((a, b) => a.startMin - b.startMin)
+        .map(({ id, name, startMin, endMin }) => ({ id, name, startMin, endMin }));
+    },
+    async listShifts(businessId, range) {
+      const ids = userIds(businessId);
+      return data.shifts
+        .filter((s) => s.status !== "CANCELLED" && ids.has(s.employeeId) && inRange(s.start, range))
+        .sort(byStart)
+        .map(({ id, employeeId, start, end, status }) => ({
+          id,
+          employeeId,
+          start,
+          end,
+          status: status as "DRAFT" | "PUBLISHED",
+        }));
+    },
+    async createShift(shift) {
+      const created = { id: randomUUID(), ...shift, status: "DRAFT" as const };
+      data.shifts.push(created);
+      return created;
+    },
+    async removeShift(businessId, id) {
+      const i = data.shifts.findIndex((s) => s.id === id && userIds(businessId).has(s.employeeId));
+      const s = data.shifts[i];
+      if (!s || s.status === "CANCELLED") return "not_found";
+      if (s.status === "DRAFT") {
+        data.shifts.splice(i, 1);
+        return "deleted";
+      }
+      s.status = "CANCELLED";
+      return "cancelled";
+    },
+    async publishShifts(businessId, range) {
+      const ids = userIds(businessId);
+      let n = 0;
+      for (const s of data.shifts) {
+        if (s.status === "DRAFT" && ids.has(s.employeeId) && inRange(s.start, range)) {
+          s.status = "PUBLISHED";
+          n++;
+        }
+      }
+      return n;
     },
   };
 }

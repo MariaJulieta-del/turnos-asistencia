@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { EmployeeSnapshot, Snapshot } from "@turnos/contract";
+import type { EmployeeSnapshot, MonthSchedule, ScheduledShift, Snapshot } from "@turnos/contract";
 import { buildApp } from "../src/app";
 import { memoryStore } from "../src/memoryStore";
 import { monthRange, tzOffsetMinutes } from "../src/period";
@@ -114,5 +114,68 @@ describe("POST /punches", () => {
     const owner = (await get("/owner/snapshot", "dueno")).json<Snapshot>();
     expect(mine.punches.some((p) => p.id === "uuid-1")).toBe(true);
     expect(owner.punches.filter((p) => p.employeeId === "e1")).toEqual(mine.punches);
+  });
+});
+
+describe("horarios", () => {
+  const send = (app: ReturnType<typeof setup>["app"], method: "POST" | "DELETE", url: string, payload?: object, token = "dueno") =>
+    app.inject({ method, url, payload, headers: { authorization: `Bearer ${token}` } });
+
+  it("el calendario del mes trae turnos, marcas y plantillas de toda la grilla", async () => {
+    const { get } = setup();
+    const m = (await get("/owner/schedule", "dueno")).json<MonthSchedule>();
+    expect(m.month).toBe("2026-10");
+    expect(m.dates[0]).toBe("2026-09-28");
+    expect(m.dates).toHaveLength(35);
+    expect(m.templates.map((t) => t.name)).toEqual(["Mañana", "Tarde", "Cierre"]);
+    expect(m.shifts).toHaveLength(8); // 7 publicados + el borrador del 31
+    expect(m.shifts.filter((s) => s.status === "DRAFT")).toHaveLength(1);
+    expect(m.punches).toHaveLength(10);
+  });
+
+  it("solo el dueño ve y edita horarios", async () => {
+    const { get, app } = setup();
+    expect((await get("/owner/schedule", "ana")).statusCode).toBe(403);
+    const res = await send(app, "POST", "/owner/shifts", { employeeId: "e1", date: "2026-11-02", startMin: 540, endMin: 1020 }, "ana");
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("asigna un turno en borrador; el empleado lo ve recién al publicar", async () => {
+    const { get, app } = setup();
+    const res = await send(app, "POST", "/owner/shifts", { employeeId: "e2", date: "2026-11-02", startMin: 17 * 60, endMin: 60 });
+    expect(res.statusCode).toBe(201);
+    const shift = res.json<ScheduledShift>();
+    expect(shift.status).toBe("DRAFT");
+    expect(new Date(shift.start).toISOString()).toBe("2026-11-02T20:00:00.000Z");
+    expect(new Date(shift.end).toISOString()).toBe("2026-11-03T04:00:00.000Z");
+
+    const before = (await get("/me/snapshot?month=2026-11", "bruno")).json<Snapshot>();
+    expect(before.planned).toEqual([]);
+
+    // Publicar otro rango no lo toca.
+    expect((await send(app, "POST", "/owner/schedule/publish", { from: "2026-11-03", to: "2026-11-30" })).json()).toEqual({
+      published: 0,
+    });
+    const pub = await send(app, "POST", "/owner/schedule/publish", { from: "2026-11-01", to: "2026-11-02" });
+    expect(pub.json()).toEqual({ published: 1 });
+    expect((await send(app, "POST", "/owner/schedule/publish", { from: "2026-11-02", to: "2026-11-01" })).statusCode).toBe(400);
+    const after = (await get("/me/snapshot?month=2026-11", "bruno")).json<Snapshot>();
+    expect(after.planned.map((s) => s.id)).toEqual([shift.id]);
+  });
+
+  it("no asigna a alguien de otro comercio ni horarios inválidos", async () => {
+    const { app } = setup();
+    const base = { employeeId: "e1", date: "2026-11-02", startMin: 540, endMin: 1020 };
+    expect((await send(app, "POST", "/owner/shifts", { ...base, employeeId: "x9" })).statusCode).toBe(400);
+    expect((await send(app, "POST", "/owner/shifts", { ...base, endMin: 1440 })).statusCode).toBe(400);
+    expect((await send(app, "POST", "/owner/shifts", { ...base, date: "2/11" })).statusCode).toBe(400);
+  });
+
+  it("quitar un borrador lo borra; quitar uno publicado lo cancela", async () => {
+    const { app, store } = setup();
+    expect((await send(app, "DELETE", "/owner/shifts/shift-e1-2026-10-31")).json()).toEqual({ status: "deleted" });
+    expect((await send(app, "DELETE", "/owner/shifts/shift-e1-2026-10-26")).json()).toEqual({ status: "cancelled" });
+    expect(store.data.shifts.find((s) => s.id === "shift-e1-2026-10-26")?.status).toBe("CANCELLED");
+    expect((await send(app, "DELETE", "/owner/shifts/shift-e1-2026-10-26")).statusCode).toBe(404);
   });
 });

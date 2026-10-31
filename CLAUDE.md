@@ -24,6 +24,8 @@ Monorepo TypeScript (npm workspaces). Español rioplatense en docs y mensajes al
 
 - `npm run dev -w @turnos/api` / `npm run typecheck -w @turnos/api` (el typecheck de la API todavía no está en el script de la raíz).
 - La API no calcula horas: devuelve datos crudos y el cliente usa `core`. Tipos compartidos en `packages/contract`.
+- Horarios: calendario mensual en el panel del dueño (`/owner/schedule`). Un horario cortado son dos turnos el mismo día; `findRestViolations` con `tzOffsetMinutes` no cuenta esa pausa como falta de descanso.
+- UI: guía `ui-ux-pro-max`. Colores solo por tokens de `apps/web/src/styles.css`; nada de emojis como iconos (Lucide).
 
 - La web no calcula por su cuenta: todo número pasa por `buildTimesheet` (`apps/web/src/lib/timesheet.ts`) → `core`.
 - Los archivos de config de la raíz tienen atributo de solo lectura; pedir permiso antes de tocarlos.
