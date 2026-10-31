@@ -1,22 +1,23 @@
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { CalendarDays, Clock, MapPin } from "lucide-react";
+import { CalendarDays, MapPin, Users } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { FirstVisitTip } from "../components/FirstVisitTip";
-import { OwnerHours } from "./owner/OwnerHours";
 import { OwnerSchedule } from "./owner/OwnerSchedule";
+import { OwnerTeam } from "./owner/OwnerTeam";
 import { OwnerWorkplace } from "./owner/OwnerWorkplace";
 
 const HELP = "/ayuda#dueno";
 
 /**
- * Panel del dueño: Horarios (calendario del mes), Horas (registro del mes) y Local (dónde se ficha).
+ * Panel del dueño: Horarios (calendario del mes), Equipo (recuento por empleado) y Local (dónde se ficha).
  * PROVISORIO: entra por enlace con token, como los empleados. La auth del dueño es una decisión abierta.
  */
 export function OwnerView() {
   const { token = "" } = useParams();
   const [params] = useSearchParams();
   const vista = params.get("vista");
-  const tab = vista === "horas" || vista === "local" ? vista : "horarios";
+  // "horas" era el nombre anterior de Equipo: se acepta para no romper enlaces guardados.
+  const tab = vista === "equipo" || vista === "horas" ? "equipo" : vista === "local" ? "local" : "horarios";
   const base = token ? `/dueno/${token}` : "/dueno";
 
   return (
@@ -26,9 +27,9 @@ export function OwnerView() {
           <CalendarDays size={18} aria-hidden="true" />
           Horarios
         </Link>
-        <Link to={`${base}?vista=horas`} aria-current={tab === "horas" ? "page" : undefined}>
-          <Clock size={18} aria-hidden="true" />
-          Horas
+        <Link to={`${base}?vista=equipo`} aria-current={tab === "equipo" ? "page" : undefined}>
+          <Users size={18} aria-hidden="true" />
+          Equipo
         </Link>
         <Link to={`${base}?vista=local`} aria-current={tab === "local" ? "page" : undefined}>
           <MapPin size={18} aria-hidden="true" />
@@ -47,11 +48,15 @@ export function OwnerView() {
             <strong>Publicar horarios</strong>.
           </li>
           <li>A medida que marcan, cada día muestra lo trabajado y las horas extra.</li>
+          <li>
+            En <strong>Equipo</strong> tenés una card por empleado con sus horas, horas extra, asistencia y próximos
+            horarios del mes.
+          </li>
         </ol>
       </FirstVisitTip>
 
       {tab === "horarios" && <OwnerSchedule token={token} />}
-      {tab === "horas" && <OwnerHours token={token} base={base} />}
+      {tab === "equipo" && <OwnerTeam token={token} base={base} />}
       {tab === "local" && <OwnerWorkplace token={token} />}
     </AppShell>
   );

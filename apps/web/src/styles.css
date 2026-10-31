@@ -1509,6 +1509,124 @@ a {
   font-weight: 550;
 }
 
+/* ---------- Equipo: cards desplegables por empleado ---------- */
+
+.team-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.team-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--c);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.team-card > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  min-height: 72px;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) ease-out;
+}
+
+.team-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.team-card > summary:hover {
+  background: var(--surface-2);
+}
+
+.team-card .disclosure {
+  transition: transform var(--dur) ease-out;
+}
+
+.team-card[open] .disclosure {
+  transform: rotate(180deg);
+}
+
+.team-card-body {
+  border-top: 1px solid var(--border);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.team-card-body section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.body-title {
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
+.team-card-body .badges,
+.badges.start {
+  justify-content: flex-start;
+}
+
+.badges.start {
+  margin-top: var(--space-1);
+}
+
+.team-total {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+}
+
+.team-total .num {
+  font-size: 1.125rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.next-shifts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.next-shifts li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.next-shifts li:last-child {
+  border-bottom: none;
+}
+
 /* ---------- Inicio y manual ---------- */
 
 .role-icon {

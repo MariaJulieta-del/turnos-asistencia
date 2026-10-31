@@ -8,7 +8,7 @@ PWA con Vite + React. Dueño y empleado ven **el mismo registro** de horas, calc
 - **Empleado (`/e/:token`, enlace personal sin contraseña)**: botón grande para marcar entrada/salida (con cola offline y, si el comercio cargó su local, ubicación solo en ese instante y con consentimiento), **Mi calendario** con el horario de cada día (de corrido o cortado), lo trabajado y las horas extra, y **Mi mes** con el total.
 - **Dueño (`/dueno/:token`)**, tres pestañas:
   - **Horarios**: calendario mensual. Desplegable **Ver horario de** (todo el equipo, cada uno con su color, o una persona). Tocar un día muestra el detalle y permite **Asignar horario** (de corrido o cortado) en uno o varios días a la vez. Lo asignado queda en borrador hasta **Publicar horarios**.
-  - **Horas**: total del mes por empleado y el detalle de cada uno.
+  - **Equipo**: totales del mes y una card desplegable por empleado con horas, horas extra, asistencia (puntuales, tardanzas, ausencias) y próximos horarios; "Ver día por día" abre su registro.
   - **Local**: lugar de trabajo y radio para verificar dónde se ficha. Las marcas fuera del local, sin ubicación o con GPS impreciso aparecen para revisar.
 - **Ayuda (`/ayuda`)**: mini manual. El botón **Ayuda** está siempre arriba a la derecha y lleva a la parte que corresponde.
 

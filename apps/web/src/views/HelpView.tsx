@@ -98,7 +98,8 @@ export function HelpView() {
       <section id="dueno" className="card help-section" aria-labelledby="h-dueno">
         <h2 id="h-dueno">Para el dueño</h2>
         <p className="muted">
-          El panel tiene dos pestañas arriba: <strong>Horarios</strong> y <strong>Horas</strong>.
+          El panel tiene tres pestañas arriba: <strong>Horarios</strong>, <strong>Equipo</strong> y{" "}
+          <strong>Local</strong>.
         </p>
         <ol className="steps">
           <li>
@@ -175,10 +176,12 @@ export function HelpView() {
           </li>
           <li>
             <div>
-              <h3>Mirá el resumen en Horas</h3>
+              <h3>Mirá el recuento en Equipo</h3>
               <p className="muted">
-                Está el total del mes por empleado y cuántas cosas hay para revisar. Tocá un nombre para ver el detalle
-                día por día, igual al que ve esa persona.
+                Arriba están los totales del equipo en el mes. Debajo, una card por empleado: tocala para abrirla y ver
+                sus horas (trabajadas, extra, nocturnas, y cuánto más o menos que lo planificado), su asistencia
+                (puntuales, tardanzas y ausencias) y sus próximos horarios. <strong>Ver día por día</strong> muestra el
+                mismo detalle que ve esa persona. Con las flechas cambiás de mes.
               </p>
             </div>
           </li>

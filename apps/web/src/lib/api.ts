@@ -53,8 +53,10 @@ export async function fetchEmployeeSnapshot(token: string): Promise<EmployeeSnap
   return { ...snap, me };
 }
 
-export async function fetchOwnerSnapshot(token: string): Promise<Snapshot> {
-  return DEMO_MODE ? demoSnapshot() : request("/owner/snapshot", token);
+/** Registro del mes "YYYY-MM" de todo el equipo; sin mes, el actual del comercio. */
+export async function fetchOwnerSnapshot(token: string, month?: string): Promise<Snapshot> {
+  if (DEMO_MODE) return demoSnapshot(month);
+  return request(month ? `/owner/snapshot?month=${month}` : "/owner/snapshot", token);
 }
 
 /** Idempotente por punch.id (clientEventId): reenviar la misma marca no la duplica. */

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Punch } from "@turnos/core";
 import { memoryStore, newPunch, PunchQueue } from "../src/lib/punchQueue";
 import { buildCalendar } from "../src/lib/calendar";
+import { summarize, teamTotals } from "../src/lib/summary";
 import { buildTimesheet, checkSchedule, nextPunchType } from "../src/lib/timesheet";
 import { demoCreateShifts, demoSnapshot } from "../src/demo";
 
@@ -131,6 +132,27 @@ describe("timesheet", () => {
     expect(created).toHaveLength(4);
     expect(new Set(created.map((c) => c.status))).toEqual(new Set(["DRAFT"]));
     expect(created[0]!.start).toBeLessThan(created[2]!.start); // ordenados por día
+  });
+
+  it("el recuento por empleado junta horas, extra, asistencia y lo pendiente", () => {
+    // "Ahora" = 30/10 12:00 en Argentina: el turno de Bruno de ese día todavía no terminó.
+    const now = Date.UTC(2026, 9, 30, 15, 0);
+    const ana = summarize(buildTimesheet("e1", punches, planned, business, now), planned, now);
+    expect(ana).toMatchObject({
+      workedMin: 483 + 460 + 600,
+      extraMin: 123,
+      shifts: 4,
+      plannedMin: 4 * 480,
+      plannedPastMin: 4 * 480,
+      onTime: 2,
+      late: 1,
+      lateMin: 20,
+      absent: 1,
+      toReview: 2, // entrada sin salida + entrada fuera del local
+    });
+    const bruno = summarize(buildTimesheet("e2", punches, planned, business, now), planned, now);
+    expect(bruno.upcomingShifts.map((s) => s.id)).toEqual(["shift-e2-2026-10-30"]);
+    expect(teamTotals([ana, bruno]).workedMin).toBe(ana.workedMin + bruno.workedMin);
   });
 
   it("propone salida si la última marca es una entrada", () => {

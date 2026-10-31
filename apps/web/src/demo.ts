@@ -12,7 +12,7 @@ import type {
   Workplace,
   WorkplaceInput,
 } from "@turnos/contract";
-import { MS_MIN, addDays, localDateKey, monthGridDates, shiftInstants, type Punch } from "@turnos/core";
+import { MS_MIN, addDays, monthGridDates, shiftInstants, type Punch } from "@turnos/core";
 
 /** Datos de ejemplo para usar la app sin apps/api. Los cambios viven en memoria hasta recargar. */
 
@@ -96,14 +96,25 @@ const punches: PunchRecord[] = [
   p("e2", "OUT", "2026-10-29", "22:40"),
 ];
 
-/** Lo que vería el empleado/dueño: solo turnos publicados. */
-export function demoSnapshot(): Snapshot {
+/**
+ * Mes de los datos de ejemplo. La demo abre acá aunque el calendario real esté en otro mes,
+ * así siempre se ve algo cargado.
+ */
+export const DEMO_MONTH = "2026-10";
+
+/** Lo que vería el empleado/dueño en un mes: solo turnos publicados. */
+export function demoSnapshot(month = DEMO_MONTH): Snapshot {
+  const [y, m] = month.split("-").map(Number) as [number, number];
+  const last = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+  const { from, to } = datesRange(`${month}-01`, last);
   return {
-    month: "2026-10",
+    month,
     business,
     employees,
-    punches,
-    planned: shifts.filter((s) => s.status === "PUBLISHED").map(({ id, employeeId, start, end }) => ({ id, employeeId, start, end })),
+    punches: punches.filter((p) => p.at >= from && p.at < to),
+    planned: shifts
+      .filter((s) => s.status === "PUBLISHED" && s.start >= from && s.start < to)
+      .map(({ id, employeeId, start, end }) => ({ id, employeeId, start, end })),
     workplaces,
   };
 }
@@ -113,7 +124,7 @@ function datesRange(first: string, last: string) {
 }
 
 export function demoSchedule(month?: string): MonthSchedule {
-  const m = month ?? localDateKey(Date.now(), OFFSET).slice(0, 7);
+  const m = month ?? DEMO_MONTH;
   const dates = monthGridDates(m);
   const { from, to } = datesRange(dates[0]!, dates.at(-1)!);
   return {

@@ -138,7 +138,7 @@ export function OwnerSchedule({ token }: { token: string }) {
             <ChevronRight size={20} aria-hidden="true" />
           </button>
           {!isCurrentMonth && (
-            <button type="button" className="btn ghost" onClick={() => setParam("mes", null)}>
+            <button type="button" className="btn ghost" onClick={() => setParam("mes", today.slice(0, 7))}>
               Hoy
             </button>
           )}
