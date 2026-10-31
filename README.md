@@ -10,7 +10,9 @@ Sistema de horarios y asistencia para comercios: el dueño arma la grilla mensua
 |---|---|---|
 | `packages/core` | Hecho, 20 tests pasando | Empareja marcas entrada/salida, detecta anomalías, calcula horas (normales, extra, nocturnas, feriado), controla descansos y compara contra el horario planificado (puntual, tarde, ausente). Sin base de datos ni red. |
 | `packages/db` | Esquema escrito, **no validado** | Esquema Prisma/PostgreSQL multi-comercio. |
-| `apps/web` | Pendiente | App instalable (PWA): grilla del dueño y pantalla de fichaje del empleado. |
+| `apps/web` | Esqueleto, modo demo | PWA (Vite + React): fichaje con cola offline y el mismo registro de horas para dueño y empleado. |
+| `apps/api` | Esqueleto, modo demo en memoria | API Fastify fina: autentica, valida, guarda marcas de forma idempotente y devuelve los datos del mes. |
+| `packages/contract` | Hecho | Tipos compartidos entre API y web. |
 
 ## Cómo correrlo
 

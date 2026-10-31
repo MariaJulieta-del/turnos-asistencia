@@ -1,0 +1,12 @@
+{
+  "name": "@turnos/contract",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "description": "Tipos que viajan entre apps/api y apps/web. Solo tipos, sin lógica.",
+  "dependencies": {
+    "@turnos/core": "*"
+  }
+}

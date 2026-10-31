@@ -1,0 +1,82 @@
+import { describe, expect, it } from "vitest";
+import type { Punch } from "@turnos/core";
+import { memoryStore, newPunch, PunchQueue } from "../src/lib/punchQueue";
+import { buildTimesheet, nextPunchType } from "../src/lib/timesheet";
+import { DEMO_SNAPSHOT } from "../src/demo";
+
+let n = 0;
+const id = () => `p${++n}`;
+
+describe("PunchQueue", () => {
+  it("no duplica una marca encolada dos veces", async () => {
+    const q = new PunchQueue(memoryStore());
+    const p = newPunch("e1", "IN", 1000, id);
+    await q.enqueue(p);
+    await q.enqueue({ ...p });
+    expect(await q.pending()).toHaveLength(1);
+  });
+
+  it("si no hay señal, las marcas quedan guardadas", async () => {
+    const q = new PunchQueue(memoryStore());
+    await q.enqueue(newPunch("e1", "IN", 1000, id));
+    const r = await q.flush(() => Promise.reject(new Error("offline")));
+    expect(r).toEqual({ sent: 0, remaining: 1 });
+  });
+
+  it("saca de la cola solo lo que el servidor confirmó, en orden", async () => {
+    const q = new PunchQueue(memoryStore());
+    const a = newPunch("e1", "IN", 1000, id);
+    const b = newPunch("e1", "OUT", 2000, id);
+    await q.enqueue(a);
+    await q.enqueue(b);
+    const sent: string[] = [];
+    const r = await q.flush(async (p) => {
+      if (p.id === b.id) throw new Error("offline");
+      sent.push(p.id);
+    });
+    expect(sent).toEqual([a.id]);
+    expect(r).toEqual({ sent: 1, remaining: 1 });
+    expect((await q.pending()).map((p) => p.id)).toEqual([b.id]);
+  });
+
+  it("no pierde una marca hecha mientras se envían otras", async () => {
+    const q = new PunchQueue(memoryStore());
+    await q.enqueue(newPunch("e1", "IN", 1000, id));
+    const late = newPunch("e1", "OUT", 2000, id);
+    await q.flush(async () => {
+      await q.enqueue(late);
+    });
+    expect((await q.pending()).map((p) => p.id)).toContain(late.id);
+  });
+});
+
+describe("timesheet", () => {
+  const { punches, planned, business } = DEMO_SNAPSHOT;
+
+  it("dueño y empleado obtienen el mismo registro", () => {
+    const own = punches.filter((p) => p.employeeId === "e1");
+    expect(buildTimesheet("e1", own, planned, business)).toEqual(buildTimesheet("e1", punches, planned, business));
+  });
+
+  it("calcula horas y reporta la entrada sin salida sin inventar horas", () => {
+    const s = buildTimesheet("e1", punches, planned, business);
+    // 08:03 + 07:40 + 10:00 (2 h extra); la entrada del 29 sin salida no suma.
+    expect(s.hours.total.total).toBe(483 + 460 + 600);
+    expect(s.hours.total.extra).toBe(3 + 120);
+    expect(s.anomalies.map((a) => a.kind)).toEqual(["OPEN_IN"]);
+    // El 29 queda ABSENT: core solo cuenta intervalos cerrados, la entrada abierta va como anomalía.
+    expect(s.attendance.map((a) => a.status)).toEqual(["ON_TIME", "LATE", "ON_TIME", "ABSENT"]);
+  });
+
+  it("una marca pendiente que el servidor ya tiene no se cuenta dos veces", () => {
+    const dup: Punch = { ...punches[0]! };
+    const s = buildTimesheet("e1", [...punches, dup], planned, business);
+    expect(s.hours.total.total).toBe(483 + 460 + 600);
+  });
+
+  it("propone salida si la última marca es una entrada", () => {
+    expect(nextPunchType(punches, "e1")).toBe("OUT");
+    expect(nextPunchType(punches, "e2")).toBe("IN");
+    expect(nextPunchType([], "e1")).toBe("IN");
+  });
+});

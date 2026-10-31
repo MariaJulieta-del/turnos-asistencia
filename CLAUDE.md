@@ -4,8 +4,9 @@ Monorepo TypeScript (npm workspaces). Español rioplatense en docs y mensajes al
 
 ## Comandos
 
-- `npm test` — Vitest sobre `packages/*/test/**/*.test.ts`
-- `npm run typecheck` — `tsc --noEmit`
+- `npm test` — Vitest sobre `packages/*/test/**/*.test.ts` y `apps/*/test/**/*.test.ts`
+- `npm run typecheck` — `tsc --noEmit` de la raíz y de `apps/web`
+- `npm run dev:web` / `npm run build:web` — PWA (Vite + React). Sin `VITE_API_URL` corre en modo demo.
 - `npm run db:validate` — valida el esquema Prisma (requiere descargar motores)
 
 ## Reglas del proyecto
@@ -19,4 +20,10 @@ Monorepo TypeScript (npm workspaces). Español rioplatense en docs y mensajes al
 
 ## Estado
 
-`core` hecho y testeado. `db` con esquema sin validar. `apps/web` y la API pendientes.
+`core` hecho y testeado. `db` con esquema validado (sin migraciones todavía). `apps/web` y `apps/api` con esqueleto: fichaje con cola offline y registro compartido. Los dos corren en modo demo sin base (`apps/api` sin `DATABASE_URL`, `apps/web` sin `VITE_API_URL`).
+
+- `npm run dev -w @turnos/api` / `npm run typecheck -w @turnos/api` (el typecheck de la API todavía no está en el script de la raíz).
+- La API no calcula horas: devuelve datos crudos y el cliente usa `core`. Tipos compartidos en `packages/contract`.
+
+- La web no calcula por su cuenta: todo número pasa por `buildTimesheet` (`apps/web/src/lib/timesheet.ts`) → `core`.
+- Los archivos de config de la raíz tienen atributo de solo lectura; pedir permiso antes de tocarlos.

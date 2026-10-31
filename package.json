@@ -4,12 +4,15 @@
   "version": "0.1.0",
   "description": "Horarios, turnos y asistencia de empleados para comercios",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ],
   "scripts": {
+    "dev:web": "npm run dev -w @turnos/web",
+    "build:web": "npm run build -w @turnos/web",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && npm run typecheck -w @turnos/web",
     "db:validate": "npm run validate -w @turnos/db",
     "db:format": "npm run format -w @turnos/db"
   },
